@@ -195,47 +195,28 @@ def reg_ops_to_reg_state(
             }
             initial_state = None
 
+        # emit expirations (in expiry-time order) that happen before this doc,
+        # so the output timestamps never go backwards
+        if value_expiration_sec is not None:
+            window = timedelta(seconds=value_expiration_sec)
+            pending = sorted(
+                (v + window, k)
+                for k, v in reg_last_updated.items()
+                if current_state.get(name_map(k)) is not None
+                and v + window < parsed_time
+            )
+            for expires_at, register in pending:
+                if expires_at > last_time_updated:
+                    yield dict(
+                        current_state,
+                        **{"@timestamp": make_zulu_time(last_time_updated)},
+                    )
+                    last_time_updated = expires_at
+                current_state[name_map(register)] = None
+
         this_value = float(doc[VALUE])
         col = name_map(original_col)
         if current_state.get(col) != this_value:
-            # expire any registers in between these calls and yield documents
-            # with those expirations
-            if value_expiration_sec is not None:
-                # accumulate a list of registers that have expired in this time
-                # window
-                expired_registers = {
-                    k: v
-                    for k, v in reg_last_updated.items()
-                    if current_state.get(k) is not None
-                    and (parsed_time - v).total_seconds() > value_expiration_sec
-                }
-
-                # sort them and create the expiration documents
-                expiration_documents = []
-                for register, reg_update in sorted(
-                    expired_registers.items(), key=lambda x: x[1]
-                ):
-                    current_state[name_map(register)] = None
-                    expiration_documents.append(
-                        dict(
-                            current_state,
-                            **{
-                                "@timestamp": make_zulu_time(
-                                    reg_update + timedelta(seconds=value_expiration_sec)
-                                )
-                            },
-                        )
-                    )
-
-                # send out the expiration packets with non-duplicate timestamps
-                for exp_doc, next_doc in zip(
-                    expiration_documents, expiration_documents[1:]
-                ):
-                    if exp_doc[TIMESTAMP] != next_doc[TIMESTAMP]:
-                        yield exp_doc
-                if expiration_documents:
-                    yield expiration_documents[-1]
-
             if parsed_time > last_time_updated:
                 # the time has moved forward - yield the old state
                 yield dict(
