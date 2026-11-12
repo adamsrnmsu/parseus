@@ -38,6 +38,13 @@ def reduce_dimensionality(reg_state):
     return pca_df
 
 
+def _fit(clusterer, values):
+    """Fit hdbscan on a writable float copy: pandas 3 (copy-on-write) returns
+    read-only arrays from DataFrame.values, and hdbscan's Cython code cannot
+    take a read-only buffer."""
+    return clusterer.fit(np.array(values, dtype=float))
+
+
 def cluster_features(reg_state, cluster_value=0.06):
     """
     Clusters each register by using hdbscan
@@ -48,7 +55,7 @@ def cluster_features(reg_state, cluster_value=0.06):
     for label in reg_state.columns:
         normalized = normalize(reg_state.loc[:, [label]])
         clusterer = hdbscan.HDBSCAN(cluster_selection_epsilon=cluster_value)
-        clusterer.fit(normalized.values.reshape(-1, 1))
+        _fit(clusterer, normalized.values.reshape(-1, 1))
         item_value_dict[label] = clusterer.labels_
     new_df = pd.DataFrame(item_value_dict).set_index(reg_state.index)
     LOGGER.debug(
@@ -68,7 +75,7 @@ def make_clustered_states_df(binned_reg_state, cluster_value, pca=False):
         clusterer = hdbscan.HDBSCAN(
             cluster_selection_epsilon=cluster_value, metric="hamming"
         )
-    clusterer.fit(binned_reg_state.values)
+    _fit(clusterer, binned_reg_state.values)
     previously_seen = {}
     state_id_list = []
     count = 0
