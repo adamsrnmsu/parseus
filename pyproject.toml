@@ -136,6 +136,8 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-django",
+    # Browser end-to-end tests (tests/e2e, `pytest -m e2e`)
+    "pytest-playwright",
     "Mako",
     # PCAP replay helper for the deploy/integrations/gpib scripts
     "scapy",
@@ -172,3 +174,8 @@ norecursedirs = ["node_modules", "dist", ".git", ".venv", "htmlcov", "build"]
 # debugging). Avoids leftover /tmp/pytest-of-* dirs that trip the next run's
 # cleanup with "Directory not empty" warnings.
 tmp_path_retention_policy = "failed"
+# Playwright end-to-end tests (tests/e2e) need a browser, the built static assets and
+# Elasticsearch, so they are opt-in: `pytest -m e2e`. A later -m on the command line
+# overrides this one.
+addopts = "-m 'not e2e'"
+markers = ["e2e: Playwright browser tests (need a browser, static assets and Elasticsearch)"]
