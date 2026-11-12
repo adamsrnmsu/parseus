@@ -281,19 +281,21 @@ function renderHealthStatus(service, health) {
     sanitize: false,
   });
 
-  const summary = health.message || 'No status message available';
-  message.textContent = summary;
+  message.textContent = health.message || 'No status message available';
 
   if (service === 'disk') {
-    const usageFill = document.getElementById('diskUsageFill');
-    const usedPercent = health.disk && Number.isFinite(Number(health.disk.used_percent))
-      ? Number(health.disk.used_percent)
-      : 0;
-    if (usageFill) {
-      usageFill.style.width = `${Math.min(100, Math.max(0, usedPercent))}%`;
-      usageFill.className = `disk-usage-fill status-${status}`;
-    }
+    renderDiskUsage(health, status);
   }
+}
+
+function renderDiskUsage(health, status) {
+  const usageFill = document.getElementById('diskUsageFill');
+  if (!usageFill) return;
+  const usedPercent = health.disk && Number.isFinite(Number(health.disk.used_percent))
+    ? Number(health.disk.used_percent)
+    : 0;
+  usageFill.style.width = `${Math.min(100, Math.max(0, usedPercent))}%`;
+  usageFill.className = `disk-usage-fill status-${status}`;
 }
 
 async function refreshMonitorHealth() {
@@ -370,12 +372,15 @@ function isAxiosTimeout(error) {
   return Boolean(error) && (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT');
 }
 
+function getAxiosResponseData(error) {
+  return (error && error.response && error.response.data) || {};
+}
+
 function getAxiosErrorMessage(error) {
   if (isAxiosTimeout(error)) return 'The server did not respond in time.';
-  const responseError = error && error.response && error.response.data && error.response.data.error;
-  if (responseError) return responseError;
-  const responseMessage = error && error.response && error.response.data && error.response.data.message;
-  if (responseMessage) return responseMessage;
+  const data = getAxiosResponseData(error);
+  if (data.error) return data.error;
+  if (data.message) return data.message;
   if (error && error.message) return error.message;
   return String(error || 'Unknown error');
 }
@@ -603,13 +608,18 @@ function getAlertUuid(alert) {
 }
 
 function getAlertListSignature(alerts) {
-  return JSON.stringify((alerts || []).map((alert) => ({
+  return JSON.stringify((alerts || []).map(getAlertSignatureEntry));
+}
+
+function getAlertSignatureEntry(alert) {
+  const { '@timestamp': timestamp, agent, event, acknowledge } = alert || {};
+  return {
     uuid: getAlertUuid(alert),
-    timestamp: alert && alert['@timestamp'] ? alert['@timestamp'] : null,
-    agentType: alert && alert.agent ? alert.agent.type : null,
-    original: alert && alert.event ? alert.event.original : null,
-    reason: alert && alert.acknowledge ? alert.acknowledge.reason : null,
-  })));
+    timestamp: timestamp || null,
+    agentType: agent ? agent.type : null,
+    original: event ? event.original : null,
+    reason: acknowledge ? acknowledge.reason : null,
+  };
 }
 
 function cloneAlertsByType(alertsByType = currentAlertsByType) {
@@ -656,14 +666,10 @@ function applyPendingAlertActions(alertsByType) {
 // handle_alerts retry window) was still arriving -- making a just-handled alert
 // flicker back into view for one refresh. Reconciling against real data means a
 // handled alert stays hidden until, and only until, the server agrees.
-function reconcilePendingAlertActions(rawSnapshotAlertsByType) {
-  if (pendingHandledAlertUuids.size === 0 && pendingFlaggedAlertUuids.size === 0) {
-    return;
-  }
-
+function collectSnapshotUuids(alertsByType) {
   const presentUuids = new Set();
   const flaggedUuids = new Set();
-  Object.values(rawSnapshotAlertsByType || {}).forEach((alerts) => {
+  Object.values(alertsByType || {}).forEach((alerts) => {
     (alerts || []).forEach((alert) => {
       const uuid = getAlertUuid(alert);
       if (!uuid) return;
@@ -673,6 +679,15 @@ function reconcilePendingAlertActions(rawSnapshotAlertsByType) {
       }
     });
   });
+  return { presentUuids, flaggedUuids };
+}
+
+function reconcilePendingAlertActions(rawSnapshotAlertsByType) {
+  if (pendingHandledAlertUuids.size === 0 && pendingFlaggedAlertUuids.size === 0) {
+    return;
+  }
+
+  const { presentUuids, flaggedUuids } = collectSnapshotUuids(rawSnapshotAlertsByType);
 
   // A handled (removed) alert is confirmed once the server no longer returns it.
   pendingHandledAlertUuids.forEach((uuid) => {
@@ -702,6 +717,66 @@ function clearPendingAlertActions(uuids, delayMs = 30000) {
   }, delayMs);
 }
 
+function captureAlertSelection(alertResults) {
+  const selectedIds = new Set();
+  alertResults.querySelectorAll('input.checkbox-alert:checked').forEach((checkbox) => {
+    selectedIds.add(checkbox.dataset.alertUuid);
+  });
+  const focused = document.activeElement;
+  const focusedId = focused
+    && focused.classList
+    && focused.classList.contains('checkbox-alert')
+    && alertResults.contains(focused)
+    ? focused.dataset.alertUuid
+    : null;
+  return { selectedIds, focusedId };
+}
+
+function restoreAlertSelection(alertResults, { selectedIds, focusedId }) {
+  alertResults.querySelectorAll('input.checkbox-alert').forEach((checkbox) => {
+    const id = checkbox.dataset.alertUuid;
+    if (selectedIds.has(id)) {
+      checkbox.checked = true;
+    }
+    if (focusedId !== null && id === focusedId) {
+      checkbox.focus({ preventScroll: true });
+    }
+  });
+}
+
+function buildAlertRow(alert, alertType, index) {
+  const alertUuid = escapeHtml(getStableClientAlertId(alert, alertType, index));
+  const alertTimestamp = escapeHtml(parseusDatetime.formatTimestamp(alert["@timestamp"], "compact", "No timestamp"));
+  const alertAgent = escapeHtml(alert.agent && alert.agent.type ? alert.agent.type : 'Alert');
+  const alertOriginal = escapeHtml(alert.event && alert.event.original ? alert.event.original : 'No alert details available');
+  const alertMessage = document.createElement("div");
+  const isFlagged = alert.acknowledge && alert.acknowledge.reason === "flagged";
+  const flagClass = isFlagged ? "" : "d-none";
+  const cardClass = isFlagged ? "alert-card flagged" : "alert-card";
+  alertMessage.className = "alert-message";
+  alertMessage.innerHTML = `
+    <div class="alert-record d-grid gap-2">
+      <label class="${cardClass}" for="alert-${alertUuid}">
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+          <div class="small d-flex align-items-center gap-2">
+            <input type="checkbox" class="checkbox-alert form-check-input m-0" id="alert-${alertUuid}" data-alert-type="${alertType}" data-alert-uuid="${alertUuid}" autocomplete="off">
+            <span>${alertTimestamp}</span>
+          </div>
+          <div class="icon-flag ${flagClass}">
+            <i class="bi bi-flag-fill text-warning"></i>
+          </div>
+        </div>
+        <div class="small ps-4" style="word-break:break-all;"><strong>${alertAgent}:</strong> ${alertOriginal}</div>
+      </label>
+    </div>`;
+  return alertMessage;
+}
+
+function getAlertTotalCount(alertType, alertCount) {
+  const total = Number(alertTotalsByType[alertType]);
+  return Number.isFinite(total) ? Math.max(total, alertCount) : alertCount;
+}
+
 function renderAlertList(alertType, alerts, alertColumn, alertHead, alertResults, options = {}) {
   const nextAlerts = cloneAlertsByType({ [alertType]: alerts })[alertType] || [];
   const nextSignature = getAlertListSignature(nextAlerts);
@@ -709,9 +784,7 @@ function renderAlertList(alertType, alerts, alertColumn, alertHead, alertResults
   // Total matching alerts on the server (may exceed what is fetched/shown when
   // the backend caps the result set). Falls back to the rendered count when the
   // total is unknown (e.g. older payloads without a totals field).
-  const totalCount = Number.isFinite(Number(alertTotalsByType[alertType]))
-    ? Math.max(Number(alertTotalsByType[alertType]), alertCount)
-    : alertCount;
+  const totalCount = getAlertTotalCount(alertType, alertCount);
   const isCapped = totalCount > alertCount;
   const countElement = getAlertCountElement(alertType);
   // Re-render when the visible list changes OR when the capped total changes,
@@ -745,17 +818,7 @@ function renderAlertList(alertType, alerts, alertColumn, alertHead, alertResults
   // operator has ticked and the keyboard focus that is on one. With alerts
   // arriving continuously that made multi-selecting effectively impossible, so
   // remember both by alert id and re-apply them to the new rows.
-  const selectedAlertIds = new Set();
-  alertResults.querySelectorAll('input.checkbox-alert:checked').forEach((checkbox) => {
-    selectedAlertIds.add(checkbox.dataset.alertUuid);
-  });
-  const focusedCheckbox = document.activeElement;
-  const focusedAlertId = focusedCheckbox
-    && focusedCheckbox.classList
-    && focusedCheckbox.classList.contains('checkbox-alert')
-    && alertResults.contains(focusedCheckbox)
-    ? focusedCheckbox.dataset.alertUuid
-    : null;
+  const selection = captureAlertSelection(alertResults);
   const fragment = document.createDocumentFragment();
 
   if (alertCount > 0) {
@@ -768,46 +831,14 @@ function renderAlertList(alertType, alerts, alertColumn, alertHead, alertResults
       : '';
 
     nextAlerts.forEach((alert, index) => {
-      const alertUuid = escapeHtml(getStableClientAlertId(alert, alertType, index));
-      const alertTimestamp = escapeHtml(parseusDatetime.formatTimestamp(alert["@timestamp"], "compact", "No timestamp"));
-      const alertAgent = escapeHtml(alert.agent && alert.agent.type ? alert.agent.type : 'Alert');
-      const alertOriginal = escapeHtml(alert.event && alert.event.original ? alert.event.original : 'No alert details available');
-      const alertMessage = document.createElement("div");
-      const isFlagged = alert.acknowledge && alert.acknowledge.reason === "flagged";
-      const flagClass = isFlagged ? "" : "d-none";
-      const cardClass = isFlagged ? "alert-card flagged" : "alert-card";
-      alertMessage.className = "alert-message";
-      alertMessage.innerHTML = `
-        <div class="alert-record d-grid gap-2">
-          <label class="${cardClass}" for="alert-${alertUuid}">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
-              <div class="small d-flex align-items-center gap-2">
-                <input type="checkbox" class="checkbox-alert form-check-input m-0" id="alert-${alertUuid}" data-alert-type="${alertType}" data-alert-uuid="${alertUuid}" autocomplete="off">
-                <span>${alertTimestamp}</span>
-              </div>
-              <div class="icon-flag ${flagClass}">
-                <i class="bi bi-flag-fill text-warning"></i>
-              </div>
-            </div>
-            <div class="small ps-4" style="word-break:break-all;"><strong>${alertAgent}:</strong> ${alertOriginal}</div>
-          </label>
-        </div>`;
-      fragment.appendChild(alertMessage);
+      fragment.appendChild(buildAlertRow(alert, alertType, index));
     });
     alertResults.replaceChildren(fragment);
 
     // Re-apply the operator's selection/focus. Alerts that are gone from the new
     // snapshot simply have no row to restore, so the selection can never refer
     // to something the operator can no longer see.
-    alertResults.querySelectorAll('input.checkbox-alert').forEach((checkbox) => {
-      const id = checkbox.dataset.alertUuid;
-      if (selectedAlertIds.has(id)) {
-        checkbox.checked = true;
-      }
-      if (focusedAlertId !== null && id === focusedAlertId) {
-        checkbox.focus({ preventScroll: true });
-      }
-    });
+    restoreAlertSelection(alertResults, selection);
   } else {
     // The empty-state panel below already says "No active alerts".
     alertHead.textContent = '';
@@ -1044,6 +1075,33 @@ function initializeAlertStream() {
   openAlertStream();
 }
 
+function handleAlertSnapshotEvent(event) {
+  try {
+    const snapshot = JSON.parse(event.data);
+    alertFirstSnapshotReceived = true;
+    if (alertFirstSnapshotTimeoutId) {
+      window.clearTimeout(alertFirstSnapshotTimeoutId);
+      alertFirstSnapshotTimeoutId = null;
+    }
+    noteAlertStreamHealthy();
+    renderAlertSnapshot(snapshot, { fromServer: true });
+  } catch (error) {
+    console.error('Error parsing alert stream payload:', error);
+  }
+}
+
+function handleAlertHeartbeatEvent(event) {
+  try {
+    const { interval_seconds: intervalSeconds } = JSON.parse(event.data);
+    if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
+      alertStreamHeartbeatSeconds = intervalSeconds;
+    }
+  } catch (error) {
+    console.error('Error parsing alert stream heartbeat:', error);
+  }
+  noteAlertStreamHealthy();
+}
+
 // Open one EventSource connection. Assumes any previous connection has already
 // been closed and does not touch failure counters or fallback polling, so it can
 // serve both the initial connect and every later reconnect.
@@ -1057,35 +1115,14 @@ function openAlertStream() {
   const isCurrent = () => source === alertEventSource;
 
   source.addEventListener("alert_snapshot", (event) => {
-    if (!isCurrent()) return;
-    try {
-      const snapshot = JSON.parse(event.data);
-      alertFirstSnapshotReceived = true;
-      if (alertFirstSnapshotTimeoutId) {
-        window.clearTimeout(alertFirstSnapshotTimeoutId);
-        alertFirstSnapshotTimeoutId = null;
-      }
-      noteAlertStreamHealthy();
-      renderAlertSnapshot(snapshot, { fromServer: true });
-    } catch (error) {
-      console.error('Error parsing alert stream payload:', error);
-    }
+    if (isCurrent()) handleAlertSnapshotEvent(event);
   });
 
   // Sent by the server while the data is unchanged. EventSource cannot see SSE
   // comment lines, so without a named event a quiet system looked identical to a
   // dead connection, and a healthy stream could never clear earlier failures.
   source.addEventListener("heartbeat", (event) => {
-    if (!isCurrent()) return;
-    try {
-      const { interval_seconds: intervalSeconds } = JSON.parse(event.data);
-      if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
-        alertStreamHeartbeatSeconds = intervalSeconds;
-      }
-    } catch (error) {
-      console.error('Error parsing alert stream heartbeat:', error);
-    }
-    noteAlertStreamHealthy();
+    if (isCurrent()) handleAlertHeartbeatEvent(event);
   });
 
   source.addEventListener("alert_error", (event) => {

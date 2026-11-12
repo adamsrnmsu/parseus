@@ -212,21 +212,44 @@ function normalize(data) {
     return data.map(([x, y]) => [x, scale(y)]);
 }
 
-function draw(graph_id, datasets, normalized=false, options={}) {
-    // Margins (in pixels)
-    options.margin = options.margin ?? {};
-    const margin = {
-        left: options.margin.left ?? 70,
-        right: options.margin.right ?? 20,
-        top: options.margin.top ?? 20,
-        bottom: options.margin.bottom ?? 120,
+// Fill in any margin side the caller did not give
+function resolveMargin(margin = {}, defaults) {
+    return {
+        left: margin.left ?? defaults.left,
+        right: margin.right ?? defaults.right,
+        top: margin.top ?? defaults.top,
+        bottom: margin.bottom ?? defaults.bottom,
     };
-    // Drawing values
-    const lineWidth = options.lineWidth ?? 3;
-    const pointFillOpacity = options.pointFillOpacity ?? 0.25;
+}
+
+function resolvePointStyle(options) {
     const pointBorderWidth = options.pointBorderWidth ?? 0.5;
     const pointRadius = options.pointRadius ?? 3.5;
-    const hoverDotWidth = options.hoverDotWidth ?? pointRadius + pointBorderWidth;
+    return {
+        lineWidth: options.lineWidth ?? 3,
+        pointFillOpacity: options.pointFillOpacity ?? 0.25,
+        pointBorderWidth,
+        pointRadius,
+        hoverDotWidth: options.hoverDotWidth ?? pointRadius + pointBorderWidth,
+    };
+}
+
+// x supports scaleUtc and scaleLinear (the default)
+function createXScale(scaleName) {
+    return scaleName === "scaleUtc" ? d3.scaleUtc() : d3.scaleLinear();
+}
+
+// Widen [min, max] by a fraction of its span on each side
+function paddedDomain([min, max], paddingPercent = 0) {
+    const padding = parseFloat(paddingPercent * (max - min));
+    return [min - padding, Number(max) + Number(padding)];
+}
+
+function draw(graph_id, datasets, normalized=false, options={}) {
+    // Margins (in pixels)
+    const margin = resolveMargin(options.margin, {left: 70, right: 20, top: 20, bottom: 120});
+    // Drawing values
+    const {lineWidth, pointFillOpacity, pointBorderWidth, pointRadius, hoverDotWidth} = resolvePointStyle(options);
     const div = document.getElementById("nav-tabContent");
     const width = div.clientWidth - 100;
     const height = width * 3/4;
@@ -268,41 +291,13 @@ function draw(graph_id, datasets, normalized=false, options={}) {
             .attr("height", height - (margin.top + margin.bottom) + 14)
             .attr("x", margin.left - 6)
             .attr("y", margin.top - 20);
-    // Create scale functions
-    const xScale = () => {
-        // xScale currently supports types scaleUtc and scaleLinear
-        switch ((options.scale ?? {}).x) {
-            case "scaleUtc": return d3.scaleUtc();
-            case "scaleLinear":
-            default: return d3.scaleLinear();
-        }
-    };
-    const yScale = () => {
-        // yScale currently only supports scaleLinear
-        return d3.scaleLinear();
-    };
-    // Create domain functions
-    const xDomain = () => {
-        const [xMin, xMax] = d3.extent(data, d => d[0]);
-        // Add padding if requested
-        const paddingPercent = (options.padding ?? {}).x ?? 0;
-        const padding = paddingPercent * (xMax - xMin);
-        return [xMin - padding, Number(xMax) + Number(padding)];
-    };
-    const yDomain = () => {
-        // Min and max are (0, 1) if normalized, else (min, max) of data
-        const [yMin, yMax] = normalized ? [0, 1] : d3.extent(data, d => d[1]);
-        // Add padding if requested
-        const paddingPercent = (options.padding ?? {}).y ?? 0;
-        const padding = parseFloat(paddingPercent * (yMax - yMin));
-        return [yMin - padding, Number(yMax) + Number(padding)];
-    };
     // Create scales (x, y) for position and z for color
-    const x = xScale()
-        .domain(xDomain())
+    const x = createXScale((options.scale ?? {}).x)
+        .domain(paddedDomain(d3.extent(data, d => d[0]), (options.padding ?? {}).x))
         .range([margin.left, width - margin.right]);
-    const y = yScale()
-        .domain(yDomain())
+    const y = d3.scaleLinear()
+        // Min and max are (0, 1) if normalized, else (min, max) of data
+        .domain(paddedDomain(normalized ? [0, 1] : d3.extent(data, d => d[1]), (options.padding ?? {}).y))
         .range([height - margin.bottom, margin.top]);
     const z = d3.scaleOrdinal()
         .domain(data.map(d => d[2]))
@@ -497,13 +492,7 @@ function drawHeatmap(graph_id, datasets, _, options={}) {
     document.querySelectorAll(".heatmaptooltip").forEach(e => e.remove());
 
     // Margins (in pixels)
-    options.margin = options.margin ?? {};
-    const margin = {
-        left: options.margin.left ?? 120,
-        right: options.margin.right ?? 20,
-        top: options.margin.top ?? 10,
-        bottom: options.margin.bottom ?? 140,
-    };
+    const margin = resolveMargin(options.margin, {left: 120, right: 20, top: 10, bottom: 140});
     // Get graph element and properties
     const div = document.getElementById("analysis-tabContent");
     const width = div.clientWidth - 100;
@@ -617,13 +606,7 @@ function drawFcHeatmap(graph_id, datasets, _, options={}) {
     document.querySelectorAll(".heatmaptooltip").forEach(e => e.remove());
 
     // Margins (in pixels)
-    options.margin = options.margin ?? {};
-    const margin = {
-        left: options.margin.left ?? 100,
-        right: options.margin.right ?? 80,
-        top: options.margin.top ?? 10,
-        bottom: options.margin.bottom ?? 150,
-    };
+    const margin = resolveMargin(options.margin, {left: 100, right: 80, top: 10, bottom: 150});
     // Get graph element and properties
     const div = document.getElementById("analysis-tabContent");
     const width = div.clientWidth - 100;

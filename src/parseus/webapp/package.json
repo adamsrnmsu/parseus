@@ -30,7 +30,7 @@
   "scripts": {
     "start": "python3 manage.py runserver localhost:8080",
     "build": "npm run copy-vendor",
-    "test": "node --test alerts/js_tests/*.test.js",
+    "test": "node --test alerts/js_tests/*.test.js js_tests/*.test.js",
     "copy-vendor": "mkdir -p dist/vendor/axios dist/vendor/bootstrap dist/vendor/bootstrap-icons dist/vendor/d3 dist/vendor/flatpickr/themes dist/vendor/jquery dist/vendor/js-yaml && cp node_modules/axios/dist/axios.min.js dist/vendor/axios/axios.min.js && cp node_modules/bootstrap/dist/js/bootstrap.bundle.min.js dist/vendor/bootstrap/bootstrap.bundle.min.js && cp node_modules/bootstrap-icons/font/bootstrap-icons.css dist/vendor/bootstrap-icons/bootstrap-icons.css && cp -R node_modules/bootstrap-icons/font/fonts dist/vendor/bootstrap-icons/fonts && cp node_modules/d3/dist/d3.min.js dist/vendor/d3/d3.min.js && cp node_modules/flatpickr/dist/flatpickr.min.js dist/vendor/flatpickr/flatpickr.min.js && cp node_modules/flatpickr/dist/flatpickr.min.css dist/vendor/flatpickr/flatpickr.min.css && cp node_modules/flatpickr/dist/themes/dark.css dist/vendor/flatpickr/themes/dark.css && cp node_modules/jquery/dist/jquery.min.js dist/vendor/jquery/jquery.min.js && cp node_modules/js-yaml/dist/js-yaml.min.js dist/vendor/js-yaml/js-yaml.min.js"
   }
 }
