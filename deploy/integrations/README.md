@@ -20,11 +20,12 @@ Each integration should keep the same operational shape where practical:
 | --- | --- | --- | --- |
 | `gpib` | `gpib` | GPIB-over-Ethernet payload ingestion and local NDJSON capture. | `deploy/integrations/gpib/scripts/verify_gpib_runtime.sh` |
 | `winlog` | `winlog` | Windows/Winlogbeat-compatible NDJSON file ingestion through Logstash. | `deploy/integrations/winlog/scripts/verify_winlog_runtime.sh` |
+| `zeek` | `zeek` | Zeek deep packet inspection of Modbus and DNP3: register and point values indexed for the Registers views and analytics. | `deploy/integrations/zeek/scripts/verify_zeek_runtime.sh` |
 
 Enable one or more integrations with:
 
 ```bash
-sudo manage-parseus up --integrations gpib,winlog
+sudo manage-parseus up --integrations gpib,winlog,zeek
 ```
 
-Review each integration's README before production deployment; both integrations handle potentially sensitive operational data.
+Review each integration's README before production deployment; these integrations handle potentially sensitive operational data.

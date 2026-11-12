@@ -1284,6 +1284,17 @@ def test_remove_system_paths_rejects_unmarked_app_root(tmp_path: Path) -> None:
         remove_system_paths(paths)
 
 
+def test_zeek_integration_maps_to_its_compose_profile() -> None:
+    assert parse_integrations_value("zeek", source="test") == ["zeek"]
+    assert build_compose_profile_args(["zeek"]) == ["--profile", "zeek"]
+    runtime = (Path(__file__).parents[1] / "compose.runtime.yaml").read_text()
+    for service in ("zeek:", "zeek_ingestor:"):
+        assert f"\n  {service}\n" in runtime
+    from manage_parseus_lib.constants import UNINSTALL_REMOVABLE_VOLUMES
+
+    assert "parseus_zeek_log_data" in UNINSTALL_REMOVABLE_VOLUMES
+
+
 def test_parse_integrations_normalizes_dedupes_and_validates() -> None:
     assert parse_integrations_value(" GPIB,winlog,gpib ", source="test") == [
         "gpib",

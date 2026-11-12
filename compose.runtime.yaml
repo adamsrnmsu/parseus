@@ -287,6 +287,78 @@ services:
     depends_on:
       - elasticsearch
 
+  # -----------------------------------------------------------------
+  # 6. [OPTIONAL] Zeek Modbus/DNP3 deep packet inspection
+  #    zeek sniffs ZEEK_IFACE and writes JSON logs; zeek_ingestor tails
+  #    them into the datastore (see deploy/integrations/zeek/README.md).
+  # -----------------------------------------------------------------
+  zeek:
+    container_name: "${PARSEUS_PROJECT_NAME:-parseus}_zeek"
+    profiles:
+      - ingestors
+      - zeek
+    pull_policy: never
+    env_file:
+      - /etc/parseus/envs/ingestor.env
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - zeek_log_data:/zeek/logs
+    restart: always
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          tr '\000' ' ' </proc/1/cmdline | grep -q zeek
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  zeek_ingestor:
+    container_name: "${PARSEUS_PROJECT_NAME:-parseus}_zeek_ingestor"
+    profiles:
+      - ingestors
+      - zeek
+    pull_policy: never
+    command:
+      - python
+      - -m
+      - parseus.ingestors.zeek
+    env_file:
+      - /etc/parseus/envs/datastore.env
+      - /etc/parseus/envs/ingestor.env
+    environment:
+      - INGESTOR_ZEEK_LOG_DIR=/zeek/logs
+    network_mode: host
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - app_log_data:/home/webapp/.parseus/artifacts/logs
+      - zeek_log_data:/zeek/logs:ro
+    restart: always
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          python -c "from pathlib import Path; import sys; data = Path('/proc/1/cmdline').read_bytes(); sys.exit(0 if b'parseus.ingestors.zeek' in data else 1)"
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - elasticsearch
+
 networks:
   zebra_crossing:
     driver: bridge
@@ -306,3 +378,5 @@ volumes:
     name: "${PARSEUS_PROJECT_NAME:-parseus}_pcap_data"
   static_data:
     name: "${PARSEUS_PROJECT_NAME:-parseus}_static_data"
+  zeek_log_data:
+    name: "${PARSEUS_PROJECT_NAME:-parseus}_zeek_log_data"

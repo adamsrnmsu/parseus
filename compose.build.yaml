@@ -8,3 +8,11 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY}
         PARSEUS_VERSION: ${PARSEUS_VERSION:-dev}
     image: parseus:${PARSEUS_VERSION:-dev}
+
+  zeek:
+    build:
+      context: deploy/integrations/zeek
+      args:
+        HTTP_PROXY: ${HTTP_PROXY}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+    image: parseus-zeek:${PARSEUS_VERSION:-dev}

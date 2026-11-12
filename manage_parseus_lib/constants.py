@@ -25,11 +25,13 @@ UNINSTALL_REMOVABLE_VOLUMES = [
     "parseus_media_data",
     "parseus_pcap_data",
     "parseus_static_data",
+    "parseus_zeek_log_data",
 ]
 
 INTEGRATION_TO_COMPOSE_PROFILE = {
     "gpib": "gpib",
     "winlog": "winlog",
+    "zeek": "zeek",
 }
 AVAILABLE_INTEGRATIONS = set(INTEGRATION_TO_COMPOSE_PROFILE)
 

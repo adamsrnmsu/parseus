@@ -1,0 +1,6 @@
+{"ts":1700040000.039999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":1,"unit":1,"func":"READ_HOLDING_REGISTERS","pdu_type":"REQ"}
+{"ts":1700040000.049999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":1,"unit":1,"func":"READ_HOLDING_REGISTERS","pdu_type":"RESP"}
+{"ts":1700040000.059999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":2,"unit":1,"func":"READ_INPUT_REGISTERS","pdu_type":"REQ"}
+{"ts":1700040000.069999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":2,"unit":1,"func":"READ_INPUT_REGISTERS","pdu_type":"RESP"}
+{"ts":1700040000.079999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":3,"unit":1,"func":"WRITE_SINGLE_REGISTER","pdu_type":"REQ"}
+{"ts":1700040000.089999,"uid":"Cm1h2GExMZUpkIgm","id.orig_h":"10.1.1.10","id.orig_p":40000,"id.resp_h":"10.1.1.20","id.resp_p":502,"tid":3,"unit":1,"func":"WRITE_SINGLE_REGISTER","pdu_type":"RESP"}

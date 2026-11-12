@@ -25,7 +25,7 @@ SAMPLE_CONFIG_TEXT = """# Parseus installer configuration sample
 method = repository
 
 # Optional integrations to enable as a comma-separated list.
-# Available integrations: gpib,winlog
+# Available integrations: gpib,winlog,zeek
 # Default: no integrations
 # integrations = gpib,winlog
 
@@ -108,6 +108,7 @@ method = repository
 # INGESTOR_GPIB_PORT = 1234
 # INGESTOR_CAPTURE_DIR = /home/webapp/.parseus/artifacts/pcaps
 # INGESTOR_INDEX = scpi_parsed
+# ZEEK_IFACE = eth0   (zeek integration: interface Zeek sniffs)
 # DATASTORE_HOST_URL = https://localhost/elasticsearch/
 
 [env.ingestor_health]

@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `zeek` integration: Zeek deep packet inspection of Modbus and DNP3 traffic, built from the stock Zeek image with no ICSNPP or package manager. It logs Modbus register/coil values and DNP3 point values (binary, counter, analog), and `parseus.ingestors.zeek` indexes them as Malcolm-style documents so the Registers views and function-code analytics work without Malcolm. Adds `get_dnp3_points` and `dnp3_to_regop`.
+
 ## [1.0.0] - 2026-10-31
 
 Initial public release.

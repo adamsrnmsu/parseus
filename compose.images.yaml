@@ -15,6 +15,14 @@ services:
     image: parseus:${PARSEUS_VERSION:-dev}
     pull_policy: never
 
+  zeek:
+    image: parseus-zeek:${PARSEUS_VERSION:-dev}
+    pull_policy: never
+
+  zeek_ingestor:
+    image: parseus:${PARSEUS_VERSION:-dev}
+    pull_policy: never
+
   kibana:
     image: kibana:8.19.5
 

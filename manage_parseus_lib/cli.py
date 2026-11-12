@@ -43,7 +43,7 @@ def get_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Comma-separated integrations to enable, for example: gpib,winlog. "
+            "Comma-separated integrations to enable, for example: gpib,winlog,zeek. "
             "If omitted, install enables no integrations. "
             "Upgrade reuses integrations from the current manifest when available."
         ),
