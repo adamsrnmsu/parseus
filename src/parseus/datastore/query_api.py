@@ -22,8 +22,6 @@ def push(ds_client, index, document_list, overwrite_old=True, grouping=None):
     """
     # first, delete documents after the first result timestamp
     if overwrite_old and document_list:
-        query = {"bool": {}}
-        query["bool"].setdefault("must", [])
         if grouping:
             grouped_values = set(doc[grouping] for doc in document_list)
             for value in grouped_values:
@@ -32,21 +30,26 @@ def push(ds_client, index, document_list, overwrite_old=True, grouping=None):
                     for item in document_list
                     if item[grouping] == value
                 )
-                query["bool"]["must"].append({"match_phrase": {grouping: value}})
-                query["bool"]["must"].append(
-                    {"range": {"@timestamp": {"gte": grouped_min_timestamp}}}
-                )
+                query = {
+                    "bool": {
+                        "must": [
+                            {"match_phrase": {grouping: value}},
+                            {"range": {"@timestamp": {"gte": grouped_min_timestamp}}},
+                        ]
+                    }
+                }
                 ds_client.delete_by_query(index, query)
-                query["bool"]["must"].pop()
-                query["bool"]["must"].pop()
         else:
             min_timestamp = min(item["@timestamp"] for item in document_list)
-            query["bool"]["must"].append(
-                {"range": {"@timestamp": {"gte": min_timestamp}}}
-            )
+            query = {
+                "bool": {"must": [{"range": {"@timestamp": {"gte": min_timestamp}}}]}
+            }
             ds_client.delete_by_query(index, query)
 
-    ds_client.bulk_push_docs(index, document_list)
+    # ponytail: delete-then-push cannot be made atomic with this client API
+    # (no doc ids to exclude), so a failed push is raised loudly, not swallowed.
+    if not ds_client.bulk_push_docs(index, document_list):
+        raise RuntimeError(f"bulk push to index {index!r} failed")
 
 
 def pull(
