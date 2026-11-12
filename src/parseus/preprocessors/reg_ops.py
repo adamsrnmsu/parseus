@@ -15,43 +15,47 @@ ADDRESS = 4
 VALUE = 5
 
 
+_REG_TYPE_BY_FUNC = {
+    "READ_HOLDING_REGISTERS": "HR",
+    "WRITE_MULTIPLE_REGISTERS": "HR",
+    "WRITE_SINGLE_REGISTER": "HR",
+    "READ_COILS": "C",
+    "WRITE_SINGLE_COIL": "C",
+    "WRITE_MULTIPLE_COILS": "C",
+    "READ_INPUT_REGISTERS": "IR",
+    "READ_DISCRETE_INPUTS": "DI",
+}
+
+
+def _modbus_fields(packet):
+    """Return (detailed, func_code, values) for a usable packet, else None."""
+    zeek = packet.get("zeek") or {}
+    detailed = zeek.get("modbus_detailed") or {}
+    func_code = (zeek.get("modbus") or {}).get("func")
+    if detailed.get("address") is None or func_code is None:
+        return None
+    values = detailed.get("response_values", detailed.get("request_values"))
+    if not values:
+        return None
+    return detailed, func_code, values
+
+
 def modbus_to_regop(packet):
-    if (
-        packet.get("zeek") is None
-        or packet["zeek"].get("modbus_detailed") is None
-        or packet["zeek"]["modbus_detailed"].get("address") is None
-        or packet["zeek"].get("modbus") is None
-        or packet["zeek"]["modbus"].get("func") is None
-    ):
+    fields = _modbus_fields(packet)
+    if fields is None:
         return []
-    modbus_values = packet["zeek"]["modbus_detailed"].get(
-        "response_values", packet["zeek"]["modbus_detailed"].get("request_values", None)
-    )
-    if not modbus_values:
-        return []
+    detailed, func_code, modbus_values = fields
     timestamp = make_zulu_time(datetime_parser(packet["@timestamp"]))
     packet_type = "modbus"
     source = packet["source"]["ip"]
     destination = packet["destination"]["ip"]
-    address = "MODBUS_PRESENT"
-    value = 1
-    start_address = int(packet["zeek"]["modbus_detailed"].get("address"))
-    regops = [(timestamp, packet_type, source, destination, address, value)]
-    func_code = packet["zeek"]["modbus"]["func"]
-    if func_code in (
-        "READ_HOLDING_REGISTERS",
-        "WRITE_MULTIPLE_REGISTERS",
-        "WRITE_SINGLE_REGISTER",
-    ):
-        reg_type = "HR"
-    elif func_code in ("READ_COILS", "WRITE_SINGLE_COIL", "WRITE_MULTIPLE_COILS"):
-        reg_type = "C"
-    elif func_code == "READ_INPUT_REGISTERS":
-        reg_type = "IR"
-    elif func_code == "READ_DISCRETE_INPUTS":
-        reg_type = "DI"
-    for i, value in enumerate(modbus_values, start=start_address):
-        # Attempt to add the register operation to our return value
+    regops = [(timestamp, packet_type, source, destination, "MODBUS_PRESENT", 1)]
+    reg_type = _REG_TYPE_BY_FUNC.get(func_code)
+    if reg_type is None:
+        # unmapped function code: we know the device spoke, but not which
+        # register space the values belong to
+        return regops
+    for i, value in enumerate(modbus_values, start=int(detailed["address"])):
         try:
             regops.append(
                 (

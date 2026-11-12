@@ -113,6 +113,43 @@ def _load_analytic_class(analytic_str: str):
     return getattr(module, analytic_str)
 
 
+def _plan_run_window(analytic, analytic_str):
+    """Return the ``(start, end)`` range to run, or ``None`` to skip this run.
+
+    Initializes or repairs the checkpoint (without running) when it is absent
+    or invalid, unless first-run backfill is enabled.
+    """
+    checkpoint_value = redis_client.get(_analytic_checkpoint_key(analytic_str))
+    start = _parse_checkpoint(checkpoint_value, analytic_str)
+
+    _, end = schedule_timestamp_range(analytic)
+
+    if checkpoint_value is None and start is None and not _backfill_on_first_run():
+        _set_checkpoint(analytic_str, end)
+        logger.info(
+            "Initialized analytic %s checkpoint at %s; skipping initial backfill.",
+            analytic.__name__,
+            end,
+        )
+        return None
+
+    if checkpoint_value is not None and start is None:
+        _set_checkpoint(analytic_str, end)
+        logger.warning(
+            "Reinitialized analytic %s checkpoint at %s after invalid Redis value; "
+            "skipping this run to avoid an accidental backfill.",
+            analytic.__name__,
+            end,
+        )
+        return None
+
+    if start is not None and end <= start:
+        logger.info("Skipping analytic %s: No new data detected.", analytic.__name__)
+        return None
+
+    return start, end
+
+
 @shared_task(queue="analytics")
 def analytic_runner(analytic_str):
     "Runs the analytic over data since the last successful run."
@@ -138,36 +175,11 @@ def analytic_runner(analytic_str):
             )
             return
 
-        checkpoint_key = _analytic_checkpoint_key(analytic_str)
-        checkpoint_value = redis_client.get(checkpoint_key)
-        start = _parse_checkpoint(checkpoint_value, analytic_str)
-
-        _, end = schedule_timestamp_range(analytic)
-
-        if checkpoint_value is None and start is None and not _backfill_on_first_run():
-            _set_checkpoint(analytic_str, end)
-            logger.info(
-                "Initialized analytic %s checkpoint at %s; skipping initial backfill.",
-                analytic.__name__,
-                end,
-            )
+        window = _plan_run_window(analytic, analytic_str)
+        if window is None:
             return
+        start, end = window
 
-        if checkpoint_value is not None and start is None:
-            _set_checkpoint(analytic_str, end)
-            logger.warning(
-                "Reinitialized analytic %s checkpoint at %s after invalid Redis value; "
-                "skipping this run to avoid an accidental backfill.",
-                analytic.__name__,
-                end,
-            )
-            return
-
-        if start is not None and end <= start:
-            logger.info("Skipping analytic %s: No new data detected.", analytic.__name__)
-            return
-
-        user_input = {"run_start": start, "run_end": end}
         # ``Analytic.name`` is a resolved property, not a DB column, so look the
         # row up by the stored fully-qualified class path instead.
         ui_analytic = Analytic.objects.get(

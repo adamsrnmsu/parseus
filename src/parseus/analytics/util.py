@@ -14,6 +14,43 @@ from sklearn.utils.extmath import weighted_mode
 from parseus.util.numerical import inv_robust_log_adjust, nanaverage, robust_log_adjust
 
 
+def _nanquantile_2d(values, quantiles, sample_weight, values_sorted, axis):
+    """Applies nanquantile to every row (axis=1/-1) or column (axis=0/-2) of a matrix"""
+    if axis is None:
+        raise ValueError("With a 2-dimensional array, you must specify an axis")
+    if axis in (0, -2):
+        values = values.T
+    return np.array(
+        [
+            nanquantile(
+                values[i], quantiles, sample_weight, values_sorted=values_sorted
+            )
+            for i in range(values.shape[0])
+        ]
+    ).T
+
+
+def _check_1d_arguments(values, sample_weight, axis):
+    """Validates the 'axis' and 'sample_weight' arguments and returns the weights as an array"""
+    if axis is not None:
+        raise ValueError(
+            "'axis' can only be set when operating on a two-dimensional object"
+        )
+    if values.ndim > 2:
+        raise ValueError("'values' must have no more than 2 dimensions")
+
+    if sample_weight is None:
+        return np.ones(len(values))
+    if sample_weight.ndim != 1:
+        raise ValueError("'sample_weight' must be one-dimensional")
+    if sample_weight.size != values.size:
+        raise ValueError(
+            f"The shapes of 'values' {values.shape} and 'sample_weight' "
+            f"{sample_weight.shape} do not match"
+        )
+    return np.array(sample_weight)
+
+
 # https://stackoverflow.com/questions/21844024/weighted-percentile-using-numpy
 # modified to work with NaNs and matrices
 def nanquantile(
@@ -31,48 +68,22 @@ def nanquantile(
     :type quantiles: iterable(float or int)
     :param sample_weight: array-like of the same length as `array`
     :param values_sorted: bool, if True, then will avoid sorting of initial array
-    :param axis: The axis to measure along, similar to numpy's axis parameters. Only used when values.ndim == 2
+    :param axis: The axis to measure along, similar to numpy's axis parameters. Only used when
+        values.ndim == 2
     :return: numpy.ndarray with computed quantiles.
-    :raises ValueError: When there is a mismatch between the 'axis' parameter and the dimensionality of the input or
-        sample weights, or when the quantiles are invalid
+    :raises ValueError: When there is a mismatch between the 'axis' parameter and the dimensionality
+        of the input or sample weights, or when the quantiles are invalid
     """
     values = np.array(values)
-    quantiles = np.array(quantiles)
+    quantiles = np.array(quantiles, dtype=float)
 
     if values.ndim == 2:
-        if axis is None:
-            raise ValueError("With a 2-dimensional array, you must specify an axis")
-        if axis in (0, -2):
-            values = values.T
-        return np.array(
-            [
-                nanquantile(
-                    values[i], quantiles, sample_weight, values_sorted=values_sorted
-                )
-                for i in range(values.shape[0])
-            ]
-        ).T
-    if axis is not None:
-        raise ValueError(
-            "'axis' can only be set when operating on a two-dimensional object"
-        )
-    if values.ndim > 2:
-        raise ValueError("'values' must have no more than 2 dimensions")
+        return _nanquantile_2d(values, quantiles, sample_weight, values_sorted, axis)
+    sample_weight = _check_1d_arguments(values, sample_weight, axis)
 
-    if sample_weight is None:
-        sample_weight = np.ones(len(values))
-    elif sample_weight.ndim != 1:
-        raise ValueError("'sample_weight' must be one-dimensional")
-    elif sample_weight.size != values.size:
-        raise ValueError(
-            "The shapes of 'values' %s and 'sample_weight' %s do not match"
-            % (str(values.shape), str(sample_weight.shape))
-        )
-
-    sample_weight = np.array(sample_weight)
     if not np.all(quantiles >= 0) or not np.all(quantiles <= 100):
         raise ValueError("Quantiles should be in [0, 100]")
-    quantiles /= 100
+    quantiles = quantiles / 100
 
     # ditch the NaNs
     nan_mask = ~np.isnan(values)
@@ -128,7 +139,7 @@ class WeightedSimpleImputer(SimpleImputer):
                 value = self.fill_value
             else:
                 raise ValueError(
-                    "Invalid weighted imputation strategy: %s" % self.strategy
+                    f"Invalid weighted imputation strategy: {self.strategy}"
                 )
             statistics.append(value)
         self.statistics_ = np.array(statistics)
@@ -159,6 +170,50 @@ class WeightedSimpleImputer(SimpleImputer):
         return self.fit(X, **kwargs).transform(X)
 
 
+def _broadcast_weights(X, sample_weight):
+    """
+    Lines the weights up with the columns of X.
+
+    :return: The weights used for the mean, the weights used for the variance (broadcastable against
+        X), and the sum of the weights
+    :raises ValueError: When the dimensionality of X and the weights cannot be combined
+    """
+    if X.ndim == 2 and sample_weight.ndim == 2:
+        # each column is weighted differently
+        total = sample_weight.sum(axis=0, keepdims=True)
+        return sample_weight, np.reshape(sample_weight, X.shape), total
+    if X.ndim == 2 and sample_weight.ndim == 1:
+        # each column is weighted the same
+        return sample_weight, sample_weight[:, np.newaxis], sample_weight.sum()
+    if X.ndim == 1 and (
+        sample_weight.ndim == 1
+        or (sample_weight.ndim == 2 and sample_weight.shape[-1] == 1)
+    ):
+        # there is only one column
+        flat = sample_weight.flatten()
+        return flat, flat, sample_weight.sum()
+    raise ValueError(
+        "Unknown dimensionality combination for the columns and weights: "
+        f"column={X.ndim}, weights={sample_weight.ndim}"
+    )
+
+
+def _weighted_mean_and_std(X, sample_weight, with_std):
+    """
+    Computes the weighted mean and (when requested) weighted standard deviation of each column of X.
+
+    :param X: A matrix, or a single column
+    :param sample_weight: One weight per row, or one weight per cell for a matrix
+    :param with_std: When False, the standard deviation is the constant 1.0
+    :raises ValueError: When the dimensionality of X and the weights cannot be combined
+    """
+    mean_weights, variance_weights, total = _broadcast_weights(X, sample_weight)
+    mean = np.average(X, axis=0, weights=mean_weights).flatten()
+    if not with_std:
+        return mean, 1.0
+    return mean, np.sqrt(np.sum((X - mean) ** 2 * variance_weights, axis=0) / total)
+
+
 class WeightedStandardScaler(StandardScaler):
     """
     A variant of the StandardScaler that uses sample weights
@@ -176,57 +231,7 @@ class WeightedStandardScaler(StandardScaler):
             return super().fit(X, y)
 
         sample_weight = getattr(sample_weight, "values", sample_weight)
-        moment = 0
-        if X.ndim == 2 and sample_weight.ndim == 2:
-            # each column is weighted differently
-            mean = np.average(X, axis=0, weights=sample_weight).flatten()
-            std = (
-                1.0
-                if not self.with_std
-                else np.sqrt(
-                    np.sum(
-                        (X - mean[np.newaxis]) ** 2
-                        * np.reshape(sample_weight, X.shape),
-                        axis=0,
-                    )
-                    / (sample_weight.sum(axis=0, keepdims=True) - moment)
-                )
-            )
-        elif X.ndim == 2 and sample_weight.ndim == 1:
-            # each column is weighted the same
-            mean = np.average(X, axis=0, weights=sample_weight).flatten()
-
-            # pylint: disable=unsubscriptable-object
-            std = (
-                1.0
-                if not self.with_std
-                else np.sqrt(
-                    np.sum(
-                        (X - mean[np.newaxis]) ** 2 * sample_weight[:, np.newaxis],
-                        axis=0,
-                    )
-                    / (sample_weight.sum() - moment)
-                )
-            )
-        elif X.ndim == 1 and (
-            sample_weight.ndim == 1
-            or (sample_weight.ndim == 2 and sample_weight.shape[-1] == 1)
-        ):
-            # there is only one column
-            mean = np.average(X, axis=0, weights=sample_weight.flatten()).flatten()
-            std = (
-                1.0
-                if not self.with_std
-                else np.sqrt(
-                    np.sum((X - mean) ** 2 * sample_weight.flatten(), axis=0)
-                    / (sample_weight.sum() - moment)
-                )
-            )
-        else:
-            raise ValueError(
-                "Unknown dimensionality combination for the columns and weights: column=%d, weights=%d"
-                % (X.ndim, sample_weight.ndim)
-            )
+        mean, std = _weighted_mean_and_std(X, sample_weight, self.with_std)
 
         if self.with_mean:
             self.mean_ = mean
@@ -249,15 +254,70 @@ class WeightedStandardScaler(StandardScaler):
         return result
 
 
+def _stack_padded(rows, pad_value, length):
+    """
+    Stacks ragged columns into a matrix (one column per row), padding the short ones.
+
+    :param rows: The columns
+    :param pad_value: Callable giving the padding for a column
+    :param length: The length each column is padded to
+    :return: The stacked matrix, or a single row of zeros when the first column is empty
+    """
+    if not list(rows[0]):
+        return np.zeros((1, len(rows)))
+    return np.stack(
+        [list(row) + [pad_value(row)] * (length - len(row)) for row in rows], axis=1
+    )
+
+
+def _central_subset(X, sample_weight, quantile_range):
+    """
+    Selects, for each column of X, the values that lie within the quantile range
+
+    :return: The padded values (one column per column of X) and the correspondingly padded sample
+        weights (or None)
+    """
+    if sample_weight is not None:
+        quantiles = nanquantile(X, quantile_range, sample_weight, axis=0)
+    else:
+        quantiles = np.nanpercentile(X, quantile_range, axis=0)
+
+    indices = [
+        list(
+            np.where(
+                np.logical_and(quantiles[0, i] <= X[:, i], X[:, i] <= quantiles[1, i])
+            )[0]
+        )
+        for i in range(X.shape[1])
+    ]
+    columns = [X[index, i] for i, index in enumerate(indices)]
+    max_len = max(map(len, columns))
+    values = _stack_padded(columns, np.mean, max_len)
+    if sample_weight is None:
+        return values, None
+    weights = [sample_weight[index] for index in indices]
+    return values, _stack_padded(weights, lambda _: 0.0, max_len)
+
+
 class RobustStandardScaler(RobustScaler):
     """
-    A variant of the RobustScaler that instead of measuring the scale by the quantiles, scales like a normal
+    A variant of the RobustScaler that instead of measuring the scale by the quantiles, scales like
+    a normal
     distribution (by the mean and variance) but discards the extreme percentiles
     """
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._is_empty = False
+
+    def _fit_empty(self):
+        """Marks the scaler as fitted on empty input, which is passed through unchanged"""
+        self._is_empty = True
+        self.center_ = None
+        self.scale_ = None
+        self.center_after_ = None
+        self.scale_after_ = None
+        return self
 
     def fit(self, X, y=None, sample_weight=None):
         """
@@ -266,68 +326,20 @@ class RobustStandardScaler(RobustScaler):
         """
         q_min, q_max = self.quantile_range
         if not 0 <= q_min <= q_max <= 100:
-            raise ValueError("Invalid quantile range: %s" % str(self.quantile_range))
+            raise ValueError(f"Invalid quantile range: {self.quantile_range}")
 
         X = getattr(X, "values", X)
         if sample_weight is not None:
             sample_weight = getattr(sample_weight, "values", sample_weight)
 
         if X.shape[0] == 0 or X.shape[1] == 0:
-            self._is_empty = True
-            self.center_ = None
-            self.scale_ = None
-            self.center_after_ = None
-            self.scale_after_ = None
-            return self
+            return self._fit_empty()
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
-
-            if sample_weight is not None:
-                quantiles = nanquantile(X, self.quantile_range, sample_weight, axis=0)
-            else:
-                quantiles = np.nanpercentile(X, self.quantile_range, axis=0)
-
-            if quantiles.ndim == 1:
-                quantiles = np.stack([quantiles, quantiles], axis=0)
-            indices = [
-                list(
-                    np.where(
-                        np.logical_and(
-                            quantiles[0, i] <= X[:, i], X[:, i] <= quantiles[1, i]
-                        )
-                    )[0]
-                )
-                for i in range(X.shape[1])
-            ]
-            values = [X[index, i] for i, index in enumerate(indices)]
-            max_len = max(map(len, values))
-            values = (
-                np.zeros((1, X.shape[1]))
-                if not values or not list(values[0])
-                else np.stack(
-                    [
-                        list(row) + [np.mean(row)] * (max_len - len(row))
-                        for row in values
-                    ],
-                    axis=1,
-                )
+            values, subset_sample_weight = _central_subset(
+                X, sample_weight, self.quantile_range
             )
-            if sample_weight is not None:
-                subset_sample_weight = [sample_weight[index] for index in indices]
-                subset_sample_weight = (
-                    np.zeros((1, X.shape[1]))
-                    if not subset_sample_weight or not list(subset_sample_weight[0])
-                    else np.stack(
-                        [
-                            list(row) + [0.0] * (max_len - len(row))
-                            for row in subset_sample_weight
-                        ],
-                        axis=1,
-                    )
-                )
-            else:
-                subset_sample_weight = None
 
         model = WeightedStandardScaler(
             copy=self.copy, with_mean=self.with_centering, with_std=self.with_scaling
@@ -352,10 +364,6 @@ class RobustStandardScaler(RobustScaler):
 
         if self.with_scaling:
             self.scale_after_ = post_scale.scale_
-            if isinstance(self.scale_after_, np.ndarray):
-                self.scale_after_[self.scale_after_ == 0] = 1
-            elif self.scale_after_ == 0:
-                self.scale_after_ = 1
 
         return self
 
@@ -397,8 +405,10 @@ class RobustStandardScaler(RobustScaler):
 
 class LabeledDataFrame(pd.DataFrame):
     """
-    Represents a variant on a DataFrame that includes a `label` attribute to be used in sequence labeling tasks. Note
-    that this attribute will not be serialized like the other traditional DataFrame attributes and data.
+    Represents a variant on a DataFrame that includes a `label` attribute to be used in sequence
+    labeling tasks. Note
+    that this attribute will not be serialized like the other traditional DataFrame attributes and
+    data.
     """
 
     def __init__(self, *args, label=None, **kwargs):
@@ -410,9 +420,10 @@ class LabeledDataFrame(pd.DataFrame):
         """
         Extracts a column from the DataFrame to use as the label for a new LabeledDataFrame
 
-        :param full_dataframe: The DataFrame, including a constant column containing the sequence's label
-        :param label_column: The name of the column containing the labels. This must be present in `full_dataframe` and
-            have only one unique value.
+        :param full_dataframe: The DataFrame, including a constant column containing the sequence's
+            label
+        :param label_column: The name of the column containing the labels. This must be present in
+            `full_dataframe` and have only one unique value.
         :return: The new LabeledDataFrame, with the label attribute set and the label column removed
         """
         if full_dataframe.shape[0] == 0:

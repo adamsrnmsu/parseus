@@ -260,3 +260,25 @@ def test_none_user_input_is_supported():
 
     assert conf.name == "my_analytic"
     assert conf.run_idx == "run-from-spec"
+
+
+def test_spec_with_unset_fields_falls_back_to_defaults(monkeypatch):
+    from parseus.interfaces import config
+
+    spec = SimpleNamespace(
+        fit_idx=None,
+        run_idx=None,
+        out_idx=None,
+        init_args=None,
+        schedule=None,
+        pull_duration=None,
+        tags=None,
+    )
+    monkeypatch.setattr(config, "get_analytic_spec", lambda name: spec)
+    conf = get_analytic_config(user_input={"suppression": ""}, analytic_name="bare")
+    assert conf.out_idx == "bare-out"
+    assert conf.fit_idx == conf.run_idx == ""
+    assert conf.init_args == {}
+    assert conf.schedule == 0 and conf.pull_duration == 0
+    assert conf.suppression == "0s"
+    assert conf.tags == []

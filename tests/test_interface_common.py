@@ -274,3 +274,80 @@ def test_factory_falls_back_to_config_type_without_capability():
             config,
             get_timerange=lambda **_: (None, None),
         )
+
+
+class _BoundsClient:
+    def __init__(self):
+        self.min = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        self.max = datetime(2024, 1, 2, tzinfo=timezone.utc)
+
+    def get_min_timestamp(self, index):
+        return self.min
+
+    def get_max_timestamp(self, index):
+        return self.max
+
+
+EPSILON = timedelta(milliseconds=1)
+
+
+def test_get_timerange_defaults_to_whole_index_inclusive_of_last_document():
+    client = _BoundsClient()
+    assert common.get_timerange(client, "idx") == (client.min, client.max + EPSILON)
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_get_timerange_treats_blank_bounds_as_unspecified(blank):
+    client = _BoundsClient()
+    assert common.get_timerange(client, "idx", start=blank, end=blank) == (
+        client.min,
+        client.max + EPSILON,
+    )
+
+
+def test_get_timerange_honours_explicit_bounds():
+    client = _BoundsClient()
+    start, end = common.get_timerange(
+        client, "idx", start="2024-01-01T06:00:00Z", end="2024-01-01T12:00:00Z"
+    )
+    assert start == datetime(2024, 1, 1, 6, tzinfo=timezone.utc)
+    assert end == datetime(2024, 1, 1, 12, tzinfo=timezone.utc)
+
+
+def test_get_timerange_uses_full_range_when_window_is_empty():
+    client = _BoundsClient()
+    same = "2024-01-01T06:00:00Z"
+    assert common.get_timerange(client, "idx", start=same, end=same) == (
+        client.min,
+        client.max + EPSILON,
+    )
+
+
+def test_get_timerange_open_end_with_explicit_start():
+    client = _BoundsClient()
+    start, end = common.get_timerange(client, "idx", start="2024-01-01T06:00:00Z")
+    assert start == datetime(2024, 1, 1, 6, tzinfo=timezone.utc)
+    assert end == client.max + EPSILON
+
+
+class _IndexClient:
+    def __init__(self, exists=True, count=0, error=None):
+        self.exists, self.count, self.error = exists, count, error
+
+    def index_exists(self, name):
+        if self.error:
+            raise self.error
+        return self.exists
+
+    def get_document_count(self, name):
+        return self.count
+
+
+def test_source_has_data():
+    assert common.source_has_data(_IndexClient(count=3), "idx") is True
+    assert common.source_has_data(_IndexClient(count=0), "idx") is False
+    assert common.source_has_data(_IndexClient(exists=False, count=9), "idx") is False
+    # a datastore error means "unknown", reported as no data
+    assert (
+        common.source_has_data(_IndexClient(error=RuntimeError("down")), "idx") is False
+    )

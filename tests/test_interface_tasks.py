@@ -126,3 +126,31 @@ def test_push_alerts_rejects_non_dictionary_alerts(monkeypatch):
         tasks.push_alerts(SimpleNamespace(out_idx="alerts"), ["not-an-alert"])
 
     assert datastore_factory.calls == 0
+
+
+def test_fetch_operator_rules_returns_empty_without_alerts_app(monkeypatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "parseus.webapp.alerts.models":
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert tasks._fetch_operator_rules("pkg.MyAnalytic") == []
+
+
+def test_fetch_operator_rules_queries_by_class_name(monkeypatch):
+    import sys
+    import types
+
+    calls = []
+    module = types.ModuleType("parseus.webapp.alerts.models")
+    module.get_sysmon_rules_for_analytic_class = lambda name: calls.append(name) or None
+    monkeypatch.setitem(sys.modules, "parseus.webapp.alerts.models", module)
+    assert tasks._fetch_operator_rules("pkg.mod.MyAnalytic") == []
+    assert calls == ["MyAnalytic"]
+    module.get_sysmon_rules_for_analytic_class = lambda name: [name, "rule"]
+    assert tasks._fetch_operator_rules(None) == ["", "rule"]

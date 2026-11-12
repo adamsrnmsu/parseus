@@ -34,6 +34,48 @@ def _index_name(index_cfg: dict, default: str = "") -> str:
     return dict(index_cfg or {}).get("index_name", default)
 
 
+def _user_index_name(user_input: dict, key: str, default: str) -> str:
+    return user_input.get(key, {}).get("index_name", default)
+
+
+def _merged_tags(spec, out_idx_cfg: dict, user_input: dict) -> list:
+    """Spec tags plus the output index's tags plus any user-supplied tag(s)."""
+    tags = list(spec.tags or [])
+    out_idx_tags = out_idx_cfg.get("tags", [])
+    if isinstance(out_idx_tags, str):
+        out_idx_tags = [out_idx_tags]
+    tags.extend(out_idx_tags)
+
+    user_tag = user_input.get("out_idx", {}).get("tags")
+    if isinstance(user_tag, list):
+        tags.extend(user_tag)
+    elif user_tag is not None:
+        tags.append(user_tag)
+    return sorted(set(tags))
+
+
+def _apply_index_config(conf, spec, user_input: dict) -> dict:
+    """Resolve index names and time windows onto ``conf``.
+
+    :return: The output index config (needed later for its tags)
+    """
+    fit_idx_cfg = dict(spec.fit_idx or {})
+    run_idx_cfg = dict(spec.run_idx or {})
+    out_idx_cfg = dict(spec.out_idx or {"index_name": f"{conf.name}-out"})
+
+    conf.fit_idx = _user_index_name(user_input, "fit_idx", _index_name(fit_idx_cfg))
+    conf.run_idx = _user_index_name(user_input, "run_idx", _index_name(run_idx_cfg))
+    conf.out_idx = _user_index_name(
+        user_input, "out_idx", _index_name(out_idx_cfg, f"{conf.name}-out")
+    )
+
+    conf.fit_start = user_input.get("fit_start", fit_idx_cfg.get("start"))
+    conf.fit_end = user_input.get("fit_end", fit_idx_cfg.get("end"))
+    conf.run_start = user_input.get("run_start", run_idx_cfg.get("start"))
+    conf.run_end = user_input.get("run_end", run_idx_cfg.get("end"))
+    return out_idx_cfg
+
+
 def get_analytic_config(
     user_input: Optional[Dict],
     analytic_name: str,
@@ -52,27 +94,7 @@ def get_analytic_config(
     conf = AnalyticConfiguration()
     conf.name = analytic_name
 
-    fit_idx_cfg = dict(spec.fit_idx or {})
-    run_idx_cfg = dict(spec.run_idx or {})
-    out_idx_cfg = dict(spec.out_idx or {"index_name": f"{analytic_name}-out"})
-
-    conf.fit_idx = user_input.get("fit_idx", {}).get(
-        "index_name",
-        _index_name(fit_idx_cfg),
-    )
-    conf.run_idx = user_input.get("run_idx", {}).get(
-        "index_name",
-        _index_name(run_idx_cfg),
-    )
-    conf.out_idx = user_input.get("out_idx", {}).get(
-        "index_name",
-        _index_name(out_idx_cfg, f"{analytic_name}-out"),
-    )
-
-    conf.fit_start = user_input.get("fit_start", fit_idx_cfg.get("start"))
-    conf.fit_end = user_input.get("fit_end", fit_idx_cfg.get("end"))
-    conf.run_start = user_input.get("run_start", run_idx_cfg.get("start"))
-    conf.run_end = user_input.get("run_end", run_idx_cfg.get("end"))
+    out_idx_cfg = _apply_index_config(conf, spec, user_input)
 
     conf.init_args = user_input.get("init_args", dict(spec.init_args or {}))
 
@@ -80,33 +102,16 @@ def get_analytic_config(
     conf.ip_filter = user_input.get("ip_filter", "")
 
     conf.schedule = int(user_input.get("schedule", spec.schedule or 0))
-    conf.pull_duration = int(
-        user_input.get("pull_duration", spec.pull_duration or 0)
-    )
+    conf.pull_duration = int(user_input.get("pull_duration", spec.pull_duration or 0))
 
     # If you add `suppression` as a first-class AnalyticSpec field, use that.
     default_suppression = getattr(spec, "suppression", "0s")
-    conf.suppression = str(
-        user_input.get("suppression", default_suppression) or "0s"
-    )
+    conf.suppression = str(user_input.get("suppression", default_suppression) or "0s")
 
     datastore_override = user_input.get("ds_host_url")
     if datastore_override is not None:
         conf.datastore_host_url = getattr(datastore_override, "url", datastore_override)
 
-    tags = list(spec.tags or [])
-    out_idx_tags = out_idx_cfg.get("tags", [])
-    if isinstance(out_idx_tags, str):
-        out_idx_tags = [out_idx_tags]
-    tags.extend(out_idx_tags)
-
-    user_tag = user_input.get("out_idx", {}).get("tags")
-    if user_tag is not None:
-        if isinstance(user_tag, list):
-            tags.extend(user_tag)
-        else:
-            tags.append(user_tag)
-
-    conf.tags = sorted(set(tags))
+    conf.tags = _merged_tags(spec, out_idx_cfg, user_input)
 
     return conf

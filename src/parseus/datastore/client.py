@@ -43,6 +43,18 @@ def get_datastore(datastore_host_url, datastore_type, datastore_auth=None):
     return datastore
 
 
+def _url_with_credentials(url, username, password):
+    """Inject ``username:password`` into ``url`` if both are given."""
+    if username and password:
+        base, sep, hostname = url.partition("//")
+        return f"{base}{sep}{username}:{password}@{hostname}"
+    if username and password is None:
+        LOGGER.error("Please provide a password if providing a username!")
+    elif username is None and password:
+        LOGGER.error("Please provide a username if providing a password!")
+    return url
+
+
 def check_datastore(ds_client):
     """
     Verifies that the datastore is available for use.
@@ -114,14 +126,7 @@ class DataStore(metaclass=DBInheritanceMeta):
             self.helper_func = opensearch_parallel_bulk
         else:
             self.helper_func = elasticsearch_parallel_bulk
-        # Inject username, password if necessary
-        if username and password:
-            base, sep, hostname = url.partition("//")
-            url = f"{base}{sep}{username}:{password}@{hostname}"
-        elif username and password is None:
-            LOGGER.error("Please provide a password if providing a username!")
-        elif username is None and password:
-            LOGGER.error("Please provide a username if providing a password!")
+        url = _url_with_credentials(url, username, password)
 
         ssl = url.startswith("https")
         if ssl and ca_certs is None:

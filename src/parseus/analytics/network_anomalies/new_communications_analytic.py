@@ -167,67 +167,21 @@ class NewCommunicationsAnalytic(Analytic):
         for conversation in transformed_documents:
             src = conversation["key"]["source"]
             dst = conversation["key"]["dest"]
-            convo = (src, dst)
-
             protocol_set = {
-                protocol["key"]
-                for protocol in conversation["protocols"]["buckets"]
+                protocol["key"] for protocol in conversation["protocols"]["buckets"]
             }
-
-            if convo not in self.protocol_convos_:
-                if suppression.should_emit("new_conversation", src, dst, now=now):
-                    new_proto_msg = f"{src}->{dst}:{sorted(protocol_set)}"
-
-                    alert = build_ecs_alert(
-                        "new conversation alert",
-                        f"New Conversation Alert: {new_proto_msg}",
-                        10.0,
-                        timestamp=start,
-                        source={"ip": src},
-                        destination={"ip": dst},
-                        network={
-                            "new_protocols": sorted(protocol_set),
-                        },
-                    )
-                    alerts.append(alert)
-            else:
-                known_protocols = self.protocol_convos_[convo]
-                new_protocols = protocol_set - known_protocols
-
-                if new_protocols:
-                    unsuppressed_protocols = []
-
-                    for protocol in sorted(new_protocols):
-                        if suppression.should_emit(
-                            "new_protocol",
-                            src,
-                            dst,
-                            protocol,
-                            now=now,
-                        ):
-                            unsuppressed_protocols.append(protocol)
-
-                    if unsuppressed_protocols:
-                        new_proto_msg = f"{src}->{dst}:{unsuppressed_protocols}"
-
-                        alert = build_ecs_alert(
-                            "new protocol seen",
-                            f"New Protocol Seen: {new_proto_msg}",
-                            10.0,
-                            timestamp=start,
-                            source={"ip": src},
-                            destination={"ip": dst},
-                            network={
-                                "new_protocols": unsuppressed_protocols,
-                            },
-                        )
-                        alerts.append(alert)
-
+            alerts.extend(
+                self._conversation_alerts(
+                    suppression, now, start, src, dst, protocol_set
+                )
+            )
             # Alert for any new IPs
             for ip in (src, dst):
-                if ip not in self.seen_ips_:
-                    if suppression.should_emit("new_ip", ip, now=now):
-                        alert = build_ecs_alert(
+                if ip not in self.seen_ips_ and suppression.should_emit(
+                    "new_ip", ip, now=now
+                ):
+                    alerts.append(
+                        build_ecs_alert(
                             "new ip alert",
                             f"New IP Alert: {ip}",
                             10.0,
@@ -236,9 +190,41 @@ class NewCommunicationsAnalytic(Analytic):
                             source={"ip": src},
                             destination={"ip": dst},
                         )
-                        alerts.append(alert)
+                    )
 
         return alerts
+
+    def _conversation_alerts(self, suppression, now, start, src, dst, protocol_set):
+        """Alerts for a new conversation, or for new protocols on a known one."""
+        convo = (src, dst)
+        if convo not in self.protocol_convos_:
+            if not suppression.should_emit("new_conversation", src, dst, now=now):
+                return []
+            action, label, protocols = (
+                "new conversation alert",
+                "New Conversation Alert",
+                sorted(protocol_set),
+            )
+        else:
+            protocols = [
+                protocol
+                for protocol in sorted(protocol_set - self.protocol_convos_[convo])
+                if suppression.should_emit("new_protocol", src, dst, protocol, now=now)
+            ]
+            if not protocols:
+                return []
+            action, label = "new protocol seen", "New Protocol Seen"
+        return [
+            build_ecs_alert(
+                action,
+                f"{label}: {src}->{dst}:{protocols}",
+                10.0,
+                timestamp=start,
+                source={"ip": src},
+                destination={"ip": dst},
+                network={"new_protocols": protocols},
+            )
+        ]
 
     def get_fit_results(self):
         """

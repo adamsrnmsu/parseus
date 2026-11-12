@@ -22,6 +22,57 @@ from parseus.preprocessors.transform import compose
 from parseus.util.datetime_utils import datetime_parser
 
 
+def _collect_auth_failures(events, last_fail, time_diffs, associated):
+    """Fold one event log into the running auth-failure gaps and context.
+
+    Appends to ``time_diffs`` / ``associated`` in place and returns the
+    timestamp of the most recent timestamped failure.
+    """
+    for event in events:
+        if not event_is_auth_failure(event):
+            continue
+        event_time = event_timestamp(event)
+        if event_time and last_fail:
+            time_diffs.append(event_time - last_fail)
+        if event_time:
+            last_fail = event_time
+        cause_effect = event_cause_effect(event)
+        if cause_effect and cause_effect not in associated:
+            associated.append(cause_effect)
+    return last_fail
+
+
+def _enumeration_alerts(device, pull_time, logs):
+    """Alerts for one device when 10+ auth failures arrive under 5s apart."""
+    alerts = []
+    associated_data = []
+    time_diffs = []
+    last_fail = None
+    for events in logs.values():
+        last_fail = _collect_auth_failures(events, last_fail, time_diffs, associated_data)
+        short_fails = [
+            d.total_seconds() for d in time_diffs if d.total_seconds() < 5
+        ]
+        if len(short_fails) >= 10:
+            alerts.append(
+                build_ecs_alert(
+                    "possible auth credential enumeration on device",
+                    f"Device {device} has potential brute-force authentication enumeration ({len(time_diffs)} failures)",
+                    3.0,
+                    category=["host"],
+                    timestamp=datetime_parser(pull_time),
+                    host={
+                        "authentication_failures_info": associated_data,
+                        "authentication_failures_count": len(short_fails),
+                        "authentication_failures_avg_resubmit": sum(short_fails)
+                        / len(short_fails),
+                        "current_pull": datetime_parser(pull_time),
+                    },
+                )
+            )
+    return alerts
+
+
 @register_analytic(
     key="PeatAuthEnumerationAnalytic",
     family="ot_internals",
@@ -80,62 +131,16 @@ class PeatAuthEnumerationAnalytic(Analytic):
         device_events = peat_docs
 
         alerts = []
-        baseline_alerts = []
+        for device, (pull_time, logs) in device_events.items():
+            alerts.extend(_enumeration_alerts(device, pull_time, logs))
 
-        for device in device_events:
-            baseline_alerts.append(
-                build_ecs_baseline(
-                    f"Device {device} has event logs: {device_events[device][1]}",
-                    category=["host"],
-                    timestamp=datetime_parser(device_events[device][0]),
-                    host={"events": list(device_events[device][1].items())},
-                )
+        baseline_alerts = [
+            build_ecs_baseline(
+                f"Device {device} has event logs: {logs}",
+                category=["host"],
+                timestamp=datetime_parser(pull_time),
+                host={"events": list(logs.items())},
             )
-
-        for device in device_events:
-            associated_data = []
-            auth_fail_time_diffs = []
-            last_auth_fail = None
-            for event_log in device_events[device][1]:
-                for event in device_events[device][1][event_log]:
-                    if event_is_auth_failure(event):
-                        event_time = event_timestamp(event)
-                        if event_time and last_auth_fail:
-                            auth_fail_time_diffs.append(event_time - last_auth_fail)
-
-                        if event_time:
-                            last_auth_fail = event_time
-
-                        cause_effect = event_cause_effect(event)
-                        if cause_effect and cause_effect not in associated_data:
-                            associated_data.append(cause_effect)
-
-                short_auth_fails = []
-                for auth_fail_time_diff in auth_fail_time_diffs:
-                    if auth_fail_time_diff.total_seconds() < 5:
-                        short_auth_fails.append(auth_fail_time_diff.total_seconds())
-
-                if len(short_auth_fails) >= 10:
-                    alerts.append(
-                        build_ecs_alert(
-                            "possible auth credential enumeration on device",
-                            f"Device {device} has potential brute-force authentication enumeration ({len(auth_fail_time_diffs)} failures)",
-                            3.0,
-                            category=["host"],
-                            timestamp=datetime_parser(device_events[device][0]),
-                            host={
-                                "authentication_failures_info": associated_data,
-                                "authentication_failures_count": len(short_auth_fails),
-                                "authentication_failures_avg_resubmit": sum(
-                                    short_auth_fails
-                                )
-                                / len(short_auth_fails),
-                                "current_pull": datetime_parser(
-                                    device_events[device][0]
-                                ),
-                            },
-                        )
-                    )
-
-        alerts += baseline_alerts
-        return alerts
+            for device, (pull_time, logs) in device_events.items()
+        ]
+        return alerts + baseline_alerts

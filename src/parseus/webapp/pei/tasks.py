@@ -124,6 +124,19 @@ def _mark_peat_run_error(peat_run_obj, message: str):
     peat_run_obj._append_console_message(message)
 
 
+def _promote_to_running_or_release(peat_run_obj, owner: str) -> bool:
+    """Move a locked run to ``running``; release the locks if it was stopped."""
+    updated = peat_run_obj.__class__.objects.filter(
+        pk=peat_run_obj.pk,
+        status__in=["started", "waiting"],
+    ).update(status="running")
+    peat_run_obj.refresh_from_db()
+    if not updated:
+        release_owner_locks(owner)
+        return False
+    return True
+
+
 def _acquire_queued_locks_or_retry(
     task,
     peat_run_obj,
@@ -144,15 +157,7 @@ def _acquire_queued_locks_or_retry(
         target_mode=target_mode,
     )
     if lock_acquisition.acquired:
-        updated = peat_run_obj.__class__.objects.filter(
-            pk=peat_run_obj.pk,
-            status__in=["started", "waiting"],
-        ).update(status="running")
-        peat_run_obj.refresh_from_db()
-        if not updated:
-            release_owner_locks(owner)
-            return False
-        return True
+        return _promote_to_running_or_release(peat_run_obj, owner)
 
     if not queue_if_busy:
         _mark_peat_run_error(
@@ -236,6 +241,69 @@ def peat_results_cleanup(result_path):
         LOGGER.info("Directory %s does not exist.", result_path)
 
 
+def _claim_started_run(peat_run_obj, lock_owner: str) -> bool:
+    """Move a ``started`` run to ``running``; release its locks if it moved on."""
+    updated = peat_run_obj.__class__.objects.filter(
+        pk=peat_run_obj.pk, status="started"
+    ).update(status="running")
+    peat_run_obj.refresh_from_db()
+    if not updated:
+        _release_peat_locks_safely(lock_owner)
+    return bool(updated)
+
+
+def _ensure_locks(
+    task, peat_run_obj, lock_owner, *, targets, target_mode, queue_if_busy, locks_acquired
+) -> bool:
+    """Verify (already locked) or acquire (queued) locks; False means stop here."""
+    if locks_acquired:
+        _verify_peat_locks_or_raise(peat_run_obj)
+        return True
+    return _acquire_queued_locks_or_retry(
+        task,
+        peat_run_obj,
+        owner=lock_owner,
+        targets=targets,
+        target_mode=target_mode,
+        queue_if_busy=queue_if_busy,
+    )
+
+
+def _finish_run(peat_run_obj, status: str, failure_message: str | None = None) -> bool:
+    """Record a terminal ``status`` unless the user stopped the run; True if recorded."""
+    peat_run_obj.refresh_from_db()
+    if peat_run_obj.status == "stopped":
+        return False
+    if failure_message:
+        LOGGER.exception(failure_message)
+    peat_run_obj.status = status
+    peat_run_obj.process_id = None
+    peat_run_obj.save(update_fields=["status", "process_id"])
+    return True
+
+
+def _finish_scan_after_process_error(peat_scan_obj):
+    """Treat a no-devices PEAT exit as a completed scan, anything else as an error."""
+    peat_scan_obj.refresh_from_db()
+    run_dir = settings.PEAT_SCAN_DIR / peat_scan_obj.run_dir
+    if peat_scan_obj.status != "stopped" and peat_scan_found_no_devices(run_dir):
+        LOGGER.info("PEAT scan completed with no identified devices")
+        if _finish_run(peat_scan_obj, "done"):
+            peat_scan_obj._append_console_message(
+                "No supported devices were identified; marking scan complete."
+            )
+    else:
+        _finish_run(peat_scan_obj, "error", "PEAT scan failed")
+
+
+def _scan_config(config_pk, intensive_scan: bool):
+    """Return ``(config_file, intensive_scan)``; a stored config overrides the flag."""
+    if not config_pk:
+        return None, intensive_scan
+    peat_config = PeatConfig.objects.get(pk=config_pk)
+    return peat_config.filename.path, peat_config.intensive_scan
+
+
 @shared_task(bind=True, queue="peat")
 def peat_pull(
     self,
@@ -249,24 +317,17 @@ def peat_pull(
     """Run a PEAT pull subprocess for ``peat_pull_obj``, managing its target locks."""
     peat_pull_obj = PeatPull.objects.get(pk=peat_pull_pk)
     lock_owner = build_owner_token_for_run(peat_pull_obj)
-    if locks_acquired:
-        updated = PeatPull.objects.filter(pk=peat_pull_pk, status="started").update(
-            status="running"
-        )
-        peat_pull_obj.refresh_from_db()
-        if not updated:
-            _release_peat_locks_safely(lock_owner)
-            return True
+    if locks_acquired and not _claim_started_run(peat_pull_obj, lock_owner):
+        return True
     try:
-        if locks_acquired:
-            _verify_peat_locks_or_raise(peat_pull_obj)
-        elif not _acquire_queued_locks_or_retry(
+        if not _ensure_locks(
             self,
             peat_pull_obj,
-            owner=lock_owner,
+            lock_owner,
             targets=device_list,
             target_mode=target_mode,
             queue_if_busy=queue_if_busy,
+            locks_acquired=locks_acquired,
         ):
             return True
         if not peat_pull_obj.run_dir:
@@ -285,18 +346,9 @@ def peat_pull(
     except Retry:
         raise
     except Exception:
-        peat_pull_obj.refresh_from_db()
-        if peat_pull_obj.status != "stopped":
-            LOGGER.exception("PEAT pull failed")
-            peat_pull_obj.status = "error"
-            peat_pull_obj.process_id = None
-            peat_pull_obj.save(update_fields=["status", "process_id"])
+        _finish_run(peat_pull_obj, "error", "PEAT pull failed")
     else:
-        peat_pull_obj.refresh_from_db()
-        if peat_pull_obj.status != "stopped":
-            peat_pull_obj.status = "done"
-            peat_pull_obj.process_id = None
-            peat_pull_obj.save(update_fields=["status", "process_id"])
+        _finish_run(peat_pull_obj, "done")
     finally:
         _release_peat_locks_safely(lock_owner)
     return True
@@ -317,33 +369,22 @@ def peat_scan(
     """Run a PEAT scan subprocess for ``peat_scan_obj``, managing its target locks."""
     peat_scan_obj = PeatScan.objects.get(pk=peat_scan_primary_key)
     lock_owner = build_owner_token_for_run(peat_scan_obj)
-    if locks_acquired:
-        updated = PeatScan.objects.filter(
-            pk=peat_scan_primary_key, status="started"
-        ).update(status="running")
-        peat_scan_obj.refresh_from_db()
-        if not updated:
-            _release_peat_locks_safely(lock_owner)
-            return True
+    if locks_acquired and not _claim_started_run(peat_scan_obj, lock_owner):
+        return True
     try:
-        if locks_acquired:
-            _verify_peat_locks_or_raise(peat_scan_obj)
-        elif not _acquire_queued_locks_or_retry(
+        if not _ensure_locks(
             self,
             peat_scan_obj,
-            owner=lock_owner,
+            lock_owner,
             targets=cidr,
             target_mode=target_mode,
             queue_if_busy=queue_if_busy,
+            locks_acquired=locks_acquired,
         ):
             return True
         if not peat_scan_obj.run_dir:
             raise ValueError("PEAT scan run_dir must be set before queueing the task")
-        config_file = None
-        if config_pk:
-            peat_config = PeatConfig.objects.get(pk=config_pk)
-            config_file = peat_config.filename.path
-            intensive_scan = peat_config.intensive_scan
+        config_file, intensive_scan = _scan_config(config_pk, intensive_scan)
         with PeatLockHeartbeat(lock_owner):
             run_peat_job(
                 peat_scan_obj,
@@ -358,34 +399,11 @@ def peat_scan(
     except Retry:
         raise
     except PeatProcessError:
-        peat_scan_obj.refresh_from_db()
-        run_dir = settings.PEAT_SCAN_DIR / peat_scan_obj.run_dir
-        if peat_scan_obj.status != "stopped" and peat_scan_found_no_devices(run_dir):
-            LOGGER.info("PEAT scan completed with no identified devices")
-            peat_scan_obj.status = "done"
-            peat_scan_obj.process_id = None
-            peat_scan_obj.save(update_fields=["status", "process_id"])
-            peat_scan_obj._append_console_message(
-                "No supported devices were identified; marking scan complete."
-            )
-        elif peat_scan_obj.status != "stopped":
-            LOGGER.exception("PEAT scan failed")
-            peat_scan_obj.status = "error"
-            peat_scan_obj.process_id = None
-            peat_scan_obj.save(update_fields=["status", "process_id"])
+        _finish_scan_after_process_error(peat_scan_obj)
     except Exception:
-        peat_scan_obj.refresh_from_db()
-        if peat_scan_obj.status != "stopped":
-            LOGGER.exception("PEAT scan failed")
-            peat_scan_obj.status = "error"
-            peat_scan_obj.process_id = None
-            peat_scan_obj.save(update_fields=["status", "process_id"])
+        _finish_run(peat_scan_obj, "error", "PEAT scan failed")
     else:
-        peat_scan_obj.refresh_from_db()
-        if peat_scan_obj.status != "stopped":
-            peat_scan_obj.status = "done"
-            peat_scan_obj.process_id = None
-            peat_scan_obj.save(update_fields=["status", "process_id"])
+        _finish_run(peat_scan_obj, "done")
     finally:
         _release_peat_locks_safely(lock_owner)
     return True

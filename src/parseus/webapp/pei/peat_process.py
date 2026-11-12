@@ -40,6 +40,23 @@ def _peat_cli_prefix() -> list[str]:
     return [sys.executable, "-u", "-m", "peat"]
 
 
+def _clean_strings(values: Iterable[str]) -> list[str]:
+    """Return stripped string forms of ``values`` with blanks dropped."""
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def _optional_flags(config_file, elastic_server, method, intensive_scan) -> list[str]:
+    """Return the optional PEAT CLI flags in their fixed order."""
+    flags = []
+    if config_file:
+        flags.extend(["-c", str(config_file)])
+    if elastic_server:
+        flags.extend(["-e", str(elastic_server)])
+    if method == "scan" and intensive_scan:
+        flags.append("--intensive-scan")
+    return flags
+
+
 def build_peat_command(
     method: str,
     targets: Iterable[str],
@@ -57,15 +74,11 @@ def build_peat_command(
     if target_mode not in {"ip", "serial"}:
         raise ValueError(f"Unsupported PEAT target mode: {target_mode}")
 
-    target_list = [str(target).strip() for target in targets if str(target).strip()]
+    target_list = _clean_strings(targets)
     if not target_list:
         raise ValueError("At least one PEAT target is required")
 
-    selected_device_types = [
-        str(device_type).strip()
-        for device_type in (device_types or [])
-        if str(device_type).strip()
-    ]
+    selected_device_types = _clean_strings(device_types or [])
     if not selected_device_types or any(
         device_type.lower() == "all" for device_type in selected_device_types
     ):
@@ -81,14 +94,7 @@ def build_peat_command(
         str(run_dir),
     ]
 
-    if config_file:
-        command.extend(["-c", str(config_file)])
-
-    if elastic_server:
-        command.extend(["-e", str(elastic_server)])
-
-    if method == "scan" and intensive_scan:
-        command.append("--intensive-scan")
+    command.extend(_optional_flags(config_file, elastic_server, method, intensive_scan))
 
     target_flag = "-s" if target_mode == "serial" else "-i"
     command.extend([target_flag, *target_list])

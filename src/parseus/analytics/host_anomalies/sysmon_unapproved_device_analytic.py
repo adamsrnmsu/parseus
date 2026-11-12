@@ -6,7 +6,6 @@ Looks for connected device references that are not in the whitelist.
 from parseus.analytics.base import Analytic
 from parseus.analytics.core import build_ecs_alert
 from parseus.analytics.core.suppression import SuppressionWindow
-from parseus.analytics.core.suppression import window_now as _window_now
 from parseus.analytics.core.operator_rules import OperatorRuleMixin
 from parseus.analytics.capabilities import (
     ElasticsearchSource,
@@ -15,8 +14,8 @@ from parseus.analytics.capabilities import (
     Unsupervised,
 )
 from parseus.analytics.host_anomalies.rules import (
+    alert_rule_context,
     describe_allowed_windows,
-    evaluate_allow_rules,
 )
 from parseus.analytics.host_anomalies.sysmon_helpers import (
     extract_timestamp_from_aggregation,
@@ -115,40 +114,31 @@ def make_alerts(
 ):
     "Use allow-list and schedule rules to return device alerts."
     alerts = []
-    known_good_devices = set(known_good_devices or [])
+    known_good = set(known_good_devices or [])
     for device_dict in device_dicts:
         device_id = device_dict["DeviceId"]
-        allowed, rule, reason = evaluate_allow_rules(
+        context = alert_rule_context(
             device_id,
             device_dict["@timestamp"],
             device_rules,
-            value_keys=("devices", "device_ids"),
-            default_timezone=default_timezone,
+            known_good,
+            ("devices", "device_ids"),
+            default_timezone,
+            window,
+            now,
         )
-
-        if allowed is True:
+        if context is None:
             continue
-        if allowed is None and device_id in known_good_devices:
-            continue
-
-        # Per-device suppression window keyed on the run clock: with the default
-        # "0s" this always emits (unchanged behaviour); a configured window
-        # re-alerts a given device at most once per window.
-        if window is not None and not window.should_emit(device_id, now=_window_now(now)):
-            continue
-
-        if reason == "outside_allowed_window":
-            rule_name = rule.get("name", "unnamed rule") if rule else "unnamed rule"
+        rule, rule_fields = context
+        if rule is not None:
             original = (
                 f"Device {device_id} was seen outside approved access window for "
-                f"rule '{rule_name}'. Allowed windows: {describe_allowed_windows(rule)}"
+                f"rule '{rule_fields['name']}'. Allowed windows: {describe_allowed_windows(rule)}"
             )
             action = "Device Outside Approved Window"
-            rule_fields = {"name": rule_name, "reason": reason}
         else:
             original = f"NEW Device {device_id}"
             action = "New Device"
-            rule_fields = {"reason": "not_in_whitelist"}
 
         alerts.append(
             build_ecs_alert(

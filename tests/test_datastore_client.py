@@ -71,3 +71,17 @@ def test_push_clear_get_docs():
     assert success
     exists = datastore.index_exists(index=TEST_INDEX)
     assert not exists
+
+
+def test_url_with_credentials_injects_only_complete_pairs(caplog):
+    from parseus.datastore.client import _url_with_credentials
+
+    assert (
+        _url_with_credentials("https://host:9200", "u", "p") == "https://u:p@host:9200"
+    )
+    assert _url_with_credentials("http://host", None, None) == "http://host"
+    with caplog.at_level("ERROR"):
+        assert _url_with_credentials("http://host", "u", None) == "http://host"
+        assert _url_with_credentials("http://host", None, "p") == "http://host"
+    assert "provide a password" in caplog.text
+    assert "provide a username" in caplog.text

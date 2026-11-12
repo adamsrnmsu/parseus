@@ -301,156 +301,170 @@ class DSData:
 
     def _get_block_no_cache(self, block_index: int):
         if self.data_type == "query":
-            self._prune_expired_scrolls()
-            page_contents = None
-            previous_scroll_id = None
-            if block_index == 0 and len(self._scrolls) < self.MAX_SCROLLS:
-                scroll_id, page_contents = self.ds_host.start_scroll(
-                    self.index,
-                    size=self._block_size,
-                    timeout=f"{self.SCROLL_TIMEOUT_SECONDS}s",
-                    query=self.query,
-                    sort=self.sort,
-                    return_fields=self.es_return_fields,
-                )
-                this_scroll = _Scroll(scroll_id, 1, datetime.now(timezone.utc))
-                self._scrolls.append(this_scroll)
-            else:
-                this_scroll = self._get_scroll_from(block_index)
-                if this_scroll:
-                    previous_scroll_id = this_scroll.scroll_id
-                    scroll_id, page_contents = self.ds_host.continue_scroll(
-                        this_scroll.scroll_id, timeout=f"{self.SCROLL_TIMEOUT_SECONDS}s"
-                    )
-                    this_scroll.next_scroll_block = block_index + 1
-            if this_scroll:
-                # we found a scroll that could pull this block.
-                # filter out all timestamps besides the last one
-                at_end = not page_contents
-                page_contents = this_scroll.buffer_from_last + page_contents
-                if page_contents:
-                    last_timestamp = page_contents[-1].get("@timestamp", None)
-                    sub_page_contents = [
-                        doc
-                        for doc in page_contents
-                        if at_end
-                        or (doc.get("@timestamp", None) or "") < (last_timestamp or "")
-                    ]
-                else:
-                    sub_page_contents = []
-                to_return = sub_page_contents
-                # update the scroll buffer
-                this_scroll.buffer_from_last = page_contents[len(sub_page_contents) :]
-                this_scroll.last_time_accessed = datetime.now(timezone.utc)
-                # Keep whichever scroll id is still valid: a fresh one from
-                # this call, or (if the datastore reports no more hits, which
-                # returns a None scroll id) the last one we actually used, so
-                # it can still be cleared below.
-                this_scroll.scroll_id = (
-                    scroll_id if scroll_id is not None else previous_scroll_id
-                )
-                # if this is too long (e.g. the index changed),
-                # trim its length to what we were expecting
-                max_result_size = (
-                    self._end_indices[block_index] - self._start_indices[block_index]
-                )
-                if len(to_return) > max_result_size:
-                    to_return = to_return[:max_result_size]
-                # update the start/end indices
-                assert len(self._start_indices) >= block_index + 1
-                if len(self._start_indices) == block_index + 1:
-                    self._end_indices[block_index] = self._start_indices[
-                        block_index
-                    ] + len(to_return)
-                    if not at_end:
-                        self._start_indices = np.append(
-                            self._start_indices, self._end_indices[-1]
-                        )
-                        self._end_indices = np.append(self._end_indices, self.MAX_INT)
-                assert (
-                    len(to_return)
-                    == self._end_indices[block_index] - self._start_indices[block_index]
-                )
-                if at_end:
-                    # Nothing left to scroll: release the context now rather
-                    # than leaving it open for SCROLL_TIMEOUT_SECONDS.
-                    self._retire_scroll(this_scroll)
-                return to_return
-            # if we couldn't get the page contents from a scroll
-            # but we know the timestamp bounds for this block, use those
-            if block_index in self._block_timestamp_bounds:
-                # check if the block is empty
-                if set(self._block_timestamp_bounds[block_index]) == {None}:
-                    return []
-
-                # build the query for this section
-                start = self._block_timestamp_bounds[block_index][0]
-                end = self._block_timestamp_bounds[block_index][1]
-                block_time_query = {
-                    "range": {
-                        "@timestamp": {
-                            "gte": datetime_parser(start),
-                            "lte": datetime_parser(end),
-                        }
-                    }
-                }
-                query = deepcopy(self.query)
-                if query is None:
-                    query = block_time_query
-                else:
-                    if "bool" not in query:
-                        query = {"bool": {"must": [query, block_time_query]}}
-                    else:
-                        for clause in query["bool"]:
-                            for index, subquery in enumerate(query["bool"][clause]):
-                                if "range" in subquery:
-                                    query["bool"][clause][index] = block_time_query
-
-                # get the results
-                return list(
-                    self.ds_host.get_all_entries(
-                        self.index, query=query, sort=self.sort
-                    )
-                )
-            # need to scroll up until this block
-            for i in range(block_index):
-                # discard every block's contents - we just need to know the length
-                self._get_block_no_cache(i)
-            return self._get_block(block_index)  # try again
+            return self._get_query_block(block_index)
         if self.data_type == "aggs":
-            # get_aggs returns None when the index does not exist; treat that
-            # as "no data" (like the plain-query branch does) instead of crashing.
-            resp = self.ds_host.get_aggs(self.index, self.aggs, self.query) or {}
-            aggregate_data = resp.get("aggregations", {})
-            return aggregate_data
-        elif self.data_type == "composite_agg":
-            if self.after_key is not None:
-                self.aggs[self.agg_name]["composite"]["after"] = self.after_key
-            # None means the index does not exist: no buckets, not an error.
-            resp = self.ds_host.get_aggs(self.index, self.aggs, self.query) or {}
-            to_return = (
-                resp.get("aggregations", {}).get(self.agg_name, {}).get("buckets", [])
+            return self._get_aggs_block()
+        if self.data_type == "composite_agg":
+            return self._get_composite_block(block_index)
+        return None
+
+    def _fetch_scroll_page(self, block_index: int):
+        """Pull ``block_index`` from a scroll.
+
+        :return: The scroll used and its raw page, or ``(None, None)`` if no
+            scroll can serve this block
+        """
+        if block_index == 0 and len(self._scrolls) < self.MAX_SCROLLS:
+            scroll_id, page_contents = self.ds_host.start_scroll(
+                self.index,
+                size=self._block_size,
+                timeout=f"{self.SCROLL_TIMEOUT_SECONDS}s",
+                query=self.query,
+                sort=self.sort,
+                return_fields=self.es_return_fields,
             )
-            self.after_key = (
-                resp.get("aggregations", {})
-                .get(self.agg_name, {})
-                .get("after_key", None)
-            )
-            # if this is too long (e.g. the index changed),
-            # trim its length to what we were expecting
-            max_result_size = (
-                self._end_indices[block_index] - self._start_indices[block_index]
-            )
-            if len(to_return) > max_result_size:
-                to_return = to_return[:max_result_size]
-            # update the start/end indices
-            if len(self._start_indices) == block_index + 1:
-                self._end_indices[block_index] = self._start_indices[block_index] + len(
-                    to_return
-                )
-                if len(to_return) > 0:
-                    self._start_indices = np.append(
-                        self._start_indices, self._end_indices[-1]
-                    )
-                    self._end_indices = np.append(self._end_indices, self.MAX_INT)
-            return to_return
+            this_scroll = _Scroll(scroll_id, 1, datetime.now(timezone.utc))
+            self._scrolls.append(this_scroll)
+            return this_scroll, page_contents
+        this_scroll = self._get_scroll_from(block_index)
+        if not this_scroll:
+            return None, None
+        scroll_id, page_contents = self.ds_host.continue_scroll(
+            this_scroll.scroll_id, timeout=f"{self.SCROLL_TIMEOUT_SECONDS}s"
+        )
+        this_scroll.next_scroll_block = block_index + 1
+        # Keep whichever scroll id is still valid: a fresh one from this call,
+        # or (if the datastore reports no more hits, which returns a None
+        # scroll id) the last one we actually used, so it can still be cleared.
+        if scroll_id is not None:
+            this_scroll.scroll_id = scroll_id
+        return this_scroll, page_contents
+
+    @staticmethod
+    def _complete_timestamps(page_contents: list, at_end: bool) -> list:
+        """Documents safe to hand out now.
+
+        Documents sharing the page's last timestamp are held back (unless this
+        is the final page) because the next page may hold more of them.
+        """
+        if at_end:
+            return list(page_contents)
+        last_timestamp = (
+            page_contents[-1].get("@timestamp", None) if page_contents else None
+        )
+        return [
+            doc
+            for doc in page_contents
+            if (doc.get("@timestamp", None) or "") < (last_timestamp or "")
+        ]
+
+    def _trim_to_block_size(self, block_index: int, documents: list) -> list:
+        """Trim to the size we were expecting (e.g. if the index changed)."""
+        max_result_size = (
+            self._end_indices[block_index] - self._start_indices[block_index]
+        )
+        return (
+            documents[:max_result_size]
+            if len(documents) > max_result_size
+            else documents
+        )
+
+    def _record_block_extent(self, block_index: int, length: int, has_more: bool):
+        """Set the end of a newly loaded block and open the next one."""
+        if len(self._start_indices) != block_index + 1:
+            return
+        self._end_indices[block_index] = self._start_indices[block_index] + length
+        if has_more:
+            self._start_indices = np.append(self._start_indices, self._end_indices[-1])
+            self._end_indices = np.append(self._end_indices, self.MAX_INT)
+
+    def _read_scroll_block(self, block_index: int, this_scroll, page_contents: list):
+        at_end = not page_contents
+        page_contents = this_scroll.buffer_from_last + page_contents
+        ready = self._complete_timestamps(page_contents, at_end)
+        # update the scroll buffer
+        this_scroll.buffer_from_last = page_contents[len(ready) :]
+        this_scroll.last_time_accessed = datetime.now(timezone.utc)
+        to_return = self._trim_to_block_size(block_index, ready)
+        assert len(self._start_indices) >= block_index + 1
+        self._record_block_extent(block_index, len(to_return), not at_end)
+        assert (
+            len(to_return)
+            == self._end_indices[block_index] - self._start_indices[block_index]
+        )
+        if at_end:
+            # Nothing left to scroll: release the context now rather
+            # than leaving it open for SCROLL_TIMEOUT_SECONDS.
+            self._retire_scroll(this_scroll)
+        return to_return
+
+    @staticmethod
+    def _with_block_time_range(query, block_time_query):
+        """Copy of ``query`` constrained to the block's time range."""
+        query = deepcopy(query)
+        if query is None:
+            return block_time_query
+        if "bool" not in query:
+            return {"bool": {"must": [query, block_time_query]}}
+        bool_query = query["bool"]
+        for key, clauses in bool_query.items():
+            if isinstance(clauses, dict) and "range" in clauses:
+                bool_query[key] = block_time_query
+            elif isinstance(clauses, list):
+                for index, subquery in enumerate(clauses):
+                    if "range" in subquery:
+                        clauses[index] = block_time_query
+        return query
+
+    def _requery_block(self, block_index: int) -> list:
+        """Reload a block whose timestamp bounds are known, without a scroll."""
+        start, end = self._block_timestamp_bounds[block_index]
+        if start is None and end is None:
+            # the block is empty
+            return []
+        block_time_query = {
+            "range": {
+                "@timestamp": {
+                    "gte": datetime_parser(start),
+                    "lte": datetime_parser(end),
+                }
+            }
+        }
+        query = self._with_block_time_range(self.query, block_time_query)
+        return list(
+            self.ds_host.get_all_entries(self.index, query=query, sort=self.sort)
+        )
+
+    def _get_query_block(self, block_index: int):
+        self._prune_expired_scrolls()
+        this_scroll, page_contents = self._fetch_scroll_page(block_index)
+        if this_scroll:
+            return self._read_scroll_block(block_index, this_scroll, page_contents)
+        # if we couldn't get the page contents from a scroll
+        # but we know the timestamp bounds for this block, use those
+        if block_index in self._block_timestamp_bounds:
+            return self._requery_block(block_index)
+        # need to scroll up until this block
+        for i in range(block_index):
+            # discard every block's contents - we just need to know the length
+            self._get_block_no_cache(i)
+        return self._get_block(block_index)  # try again
+
+    def _get_aggs_block(self):
+        # get_aggs returns None when the index does not exist; treat that
+        # as "no data" (like the plain-query branch does) instead of crashing.
+        resp = self.ds_host.get_aggs(self.index, self.aggs, self.query) or {}
+        return resp.get("aggregations", {})
+
+    def _get_composite_block(self, block_index: int):
+        if self.after_key is not None:
+            self.aggs[self.agg_name]["composite"]["after"] = self.after_key
+        # None means the index does not exist: no buckets, not an error.
+        resp = self.ds_host.get_aggs(self.index, self.aggs, self.query) or {}
+        aggregation = resp.get("aggregations", {}).get(self.agg_name, {})
+        self.after_key = aggregation.get("after_key", None)
+        to_return = self._trim_to_block_size(
+            block_index, aggregation.get("buckets", [])
+        )
+        self._record_block_extent(block_index, len(to_return), len(to_return) > 0)
+        return to_return

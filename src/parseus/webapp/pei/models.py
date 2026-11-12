@@ -26,6 +26,46 @@ def validate_yaml_file(uploaded_file):
         uploaded_file.seek(0)  # Reset file pointer to the beginning
 
 
+ACTIVE_STATUSES = {"started", "waiting", "running"}
+
+
+def _revoke_task(task_id):
+    """Revoke a queued Celery task without terminating the worker process."""
+    try:
+        app.control.revoke(task_id, terminate=False)
+    except OperationalError:
+        logging.exception(
+            "RabbitMQ not running. Running/Scheduled tasks may not be "
+            "properly removed."
+        )
+
+
+def _is_remote_process(process_id, process_host) -> bool:
+    """Return True when the PID belongs to another PID namespace than ours."""
+    return bool(process_id and process_host and process_host != current_process_host())
+
+
+def _terminate_local_process(process_id) -> bool:
+    """Terminate a local process group; True when its tree is known to be gone."""
+    try:
+        terminate_process_group(int(process_id))
+    except ProcessLookupError:
+        logging.debug("No process running: %s", process_id)
+    except OSError:
+        logging.exception("Failed to terminate PEAT process %s", process_id)
+        return False
+    return True
+
+
+def _should_release_locks(previous_status, had_process_id, process_tree_finished) -> bool:
+    """Decide whether a stopped run's locks can be released right away."""
+    return (
+        previous_status == "started"
+        or previous_status not in ACTIVE_STATUSES
+        or (had_process_id and process_tree_finished)
+    )
+
+
 class PeatConfig(models.Model):
     filename = models.FileField(upload_to="peat", validators=[validate_yaml_file])
     name = models.CharField(max_length=150, blank=True, null=True)
@@ -155,6 +195,37 @@ class PeatDevice(models.Model):
         return config
 
 
+def _mark_stopped(run):
+    run.status = "stopped"
+    run.save(update_fields=["status"])
+    run._append_console_message("Stop requested by user; terminating PEAT run...")
+    # Revoke queued tasks without terminating the Celery worker process.
+    # Running PEAT work is canceled by terminating the isolated subprocess
+    # group, allowing the worker task to clean up DB state.
+    if run.task_id:
+        _revoke_task(run.task_id)
+
+
+def _terminate_process(run):
+    """Return ``(process_is_remote, process_tree_finished)`` after terminating."""
+    process_is_remote = _is_remote_process(run.process_id, run.process_host)
+    if process_is_remote:
+        # The PID belongs to another container's PID namespace; signalling it
+        # here could kill an unrelated local process. The owning worker
+        # watches for the "stopped" status and terminates its own subprocess,
+        # then releases the locks in its task cleanup.
+        logging.info(
+            "PEAT process %s belongs to PID namespace %s; leaving "
+            "termination to that worker",
+            run.process_id,
+            run.process_host,
+        )
+        return True, False
+    if run.process_id:
+        return False, _terminate_local_process(run.process_id)
+    return False, False
+
+
 class PeatRun(models.Model):
     STATUS_CHOICES = [
         ("started", "Started"),
@@ -214,65 +285,16 @@ class PeatRun(models.Model):
         self.refresh_from_db(
             fields=["status", "task_id", "process_id", "process_host", "run_dir"]
         )
-        active_statuses = {"started", "waiting", "running"}
         previous_status = self.status
-        should_mark_stopped = self.status in active_statuses
+        should_mark_stopped = previous_status in ACTIVE_STATUSES
 
         if should_mark_stopped:
-            self.status = "stopped"
-            self.save(update_fields=["status"])
-            self._append_console_message(
-                "Stop requested by user; terminating PEAT run..."
-            )
+            _mark_stopped(self)
 
-        # Revoke queued tasks without terminating the Celery worker process.
-        # Running PEAT work is canceled by terminating the isolated subprocess
-        # group below, allowing the worker task to clean up DB state.
-        if self.task_id and should_mark_stopped:
-            try:
-                app.control.revoke(self.task_id, terminate=False)
-            except OperationalError:
-                logging.exception(
-                    "RabbitMQ not running. Running/Scheduled tasks may not be "
-                    "properly removed."
-                )
-
-        had_process_id = bool(self.process_id)
-        process_tree_finished = False
-        process_is_remote = bool(
-            self.process_id
-            and self.process_host
-            and self.process_host != current_process_host()
-        )
-        if process_is_remote:
-            # The PID belongs to another container's PID namespace; signalling it
-            # here could kill an unrelated local process. The owning worker
-            # watches for the "stopped" status and terminates its own subprocess,
-            # then releases the locks in its task cleanup.
-            logging.info(
-                "PEAT process %s belongs to PID namespace %s; leaving "
-                "termination to that worker",
-                self.process_id,
-                self.process_host,
-            )
-        elif self.process_id:
-            try:
-                terminate_process_group(int(self.process_id))
-                process_tree_finished = True
-            except ProcessLookupError:
-                logging.debug("No process running: %s", self.process_id)
-                process_tree_finished = True
-            except OSError:
-                logging.exception(
-                    "Failed to terminate PEAT process %s", self.process_id
-                )
-
-        should_release_locks = self.task_id and (
-            previous_status == "started"
-            or previous_status not in active_statuses
-            or (had_process_id and process_tree_finished)
-        )
-        if should_release_locks:
+        process_is_remote, process_tree_finished = _terminate_process(self)
+        if self.task_id and _should_release_locks(
+            previous_status, bool(self.process_id), process_tree_finished
+        ):
             try:
                 release_owner_locks(build_owner_token_for_run(self))
             except Exception:

@@ -249,3 +249,19 @@ def test_analytic_runner_does_not_advance_checkpoint_when_source_becomes_empty(
     assert run_calls == []
     assert fake_redis.get("FakeAnalytic:last_run_end_ts") == str(start.timestamp())
     assert fake_redis.get("FakeAnalytic:run_lock") is None
+
+
+def test_analytic_runner_skips_when_no_time_has_elapsed(monkeypatch):
+    """end == checkpoint means no new data: nothing runs."""
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    fake_redis = FakeRedis({"FakeAnalytic:last_run_end_ts": str(start.timestamp())})
+    run_calls = []
+    _patch_runner_dependencies(monkeypatch, fake_redis, end=start)
+    monkeypatch.setattr(
+        analytics_tasks, "run_and_push_analytics", lambda *a, **k: run_calls.append(1)
+    )
+
+    analytics_tasks.analytic_runner.run("FakeAnalytic")
+
+    assert run_calls == []
+    assert fake_redis.get("FakeAnalytic:last_run_end_ts") == str(start.timestamp())

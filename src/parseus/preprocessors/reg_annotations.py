@@ -58,6 +58,38 @@ def create_nuniques(reg_state):
     return nuniques
 
 
+def _last_octet(sender):
+    return sender[sender.rfind(".") + 1 :] if "." in sender else sender
+
+
+def _sender_and_register(index_value):
+    """Split a register name into (last octet of sender, register)."""
+    if "->" in index_value:
+        sender = _last_octet(index_value[: index_value.index("->")])
+    else:
+        sender = index_value[: index_value.index(":")]
+    return sender, index_value[index_value.find(":") + 1 :]
+
+
+def _apply_types_file(annotated_reg, types_file):
+    """Fill the Data_Type column from a CSV of register -> data type."""
+    mapped_registers = {
+        index_value: _sender_and_register(index_value)
+        for index_value in annotated_reg.index.values
+    }
+    for register, data_type in pd.read_csv(types_file, header=None).values:
+        if "->" in register:
+            # for just one destination
+            annotated_reg.loc[register, "Data_Type"] = data_type
+            continue
+        # for all destinations
+        sender, reg_number = register.split(":")
+        key = (_last_octet(sender), reg_number)
+        for index_value, mapped in mapped_registers.items():
+            if mapped == key:
+                annotated_reg.loc[index_value, "Data_Type"] = data_type
+
+
 def create_annotated_reg(reg_state, types_file=None):
     """
     Creates an annotated register frame to display categorical data about
@@ -69,33 +101,7 @@ def create_annotated_reg(reg_state, types_file=None):
     annotated_reg["Data_Type"] = pd.Series(index=annotated_reg.index, data="unknown")
 
     if types_file is not None:
-        # create a mapping for original reg_state to
-        # (sender last 8bits, register)
-        mapped_registers = {}
-        for index_value in annotated_reg.index.values:
-            if "->" in index_value:
-                this_sender = index_value[: index_value.index("->")]
-                if "." in this_sender:
-                    this_sender = this_sender[this_sender.rfind(".") + 1 :]
-            else:
-                this_sender = index_value[: index_value.index(":")]
-            this_reg = index_value[index_value.find(":") + 1 :]
-            mapped_registers[index_value] = (this_sender, this_reg)
-
-        # pull the types in from the file
-        for register, data_type in pd.read_csv(types_file, header=None).values:
-            if "->" in register:
-                # for just one destination
-                annotated_reg.loc[register, "Data_Type"] = data_type
-            else:
-                # for all destinations
-                sender, reg_number = register.split(":")
-                if "." in sender:
-                    sender = sender[sender.rfind(".") + 1 :]
-
-                for index_value in annotated_reg.index.values:
-                    if mapped_registers[index_value] == (sender, reg_number):
-                        annotated_reg.loc[index_value, "Data_Type"] = data_type
+        _apply_types_file(annotated_reg, types_file)
 
     return annotated_reg
 

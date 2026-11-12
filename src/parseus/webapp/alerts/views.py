@@ -629,6 +629,29 @@ def _alert_update_script(*, handled: bool, reason: str) -> dict[str, object]:
     }
 
 
+def _validate_handle_body(
+    body: dict[str, object],
+) -> tuple[list[str], JsonResponse | None]:
+    """Return ``(deduped uuids, None)`` or ``([], error response)`` for a handle request."""
+    uuids = body.get("uuids", [])
+
+    if body.get("handle_type") not in ALERT_HANDLE_TYPES:
+        return [], JsonResponse({"error": "Invalid alert handling type"}, status=400)
+
+    if not isinstance(uuids, list) or not all(isinstance(uuid, str) for uuid in uuids):
+        return [], JsonResponse(
+            {"error": "Alert UUIDs must be a list of strings"}, status=400
+        )
+
+    uuids = list(dict.fromkeys(uuid for uuid in uuids if uuid))
+    if len(uuids) > MAX_ALERT_HANDLE_BATCH:
+        return [], JsonResponse(
+            {"error": f"Too many alerts selected. Maximum is {MAX_ALERT_HANDLE_BATCH}."},
+            status=400,
+        )
+    return uuids, None
+
+
 def handle_alerts(request):
     """Dismiss or flag only the alerts the operator selected.
 
@@ -641,32 +664,11 @@ def handle_alerts(request):
     try:
         body = _json_body(request)
         handle_type = body.get("handle_type")
-        uuids = body.get("uuids", [])
-
-        if handle_type not in ALERT_HANDLE_TYPES:
-            return JsonResponse({"error": "Invalid alert handling type"}, status=400)
-
-        if not isinstance(uuids, list) or not all(
-            isinstance(uuid, str) for uuid in uuids
-        ):
-            return JsonResponse(
-                {"error": "Alert UUIDs must be a list of strings"}, status=400
-            )
-
-        uuids = list(dict.fromkeys(uuid for uuid in uuids if uuid))
+        uuids, error = _validate_handle_body(body)
+        if error:
+            return error
         if not uuids:
             return JsonResponse({"message": "No alerts selected for handling."})
-
-        if len(uuids) > MAX_ALERT_HANDLE_BATCH:
-            return JsonResponse(
-                {
-                    "error": (
-                        f"Too many alerts selected. Maximum is "
-                        f"{MAX_ALERT_HANDLE_BATCH}."
-                    )
-                },
-                status=400,
-            )
 
         update_script = _alert_update_script(
             handled=handle_type != "flagged", reason=handle_type
