@@ -185,7 +185,7 @@ def sysmon_user_transform(docs, **kwargs):
 
 
 def get_docs(datastore, index_name, query):
-    "gets all docuements from the datastore that match the index and query."
+    "gets all documents from the datastore that match the index and query."
     response = datastore.search(index=index_name, body=query)
     documents = response["hits"]["hits"]
     documents_dict = [doc["_source"] for doc in documents]

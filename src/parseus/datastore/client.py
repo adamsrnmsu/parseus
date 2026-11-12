@@ -152,7 +152,7 @@ class DataStore(metaclass=DBInheritanceMeta):
         """Creates an index in the datastore.
 
         :param index: The index to create.
-        :return: The status of the create opeartion as a bool.
+        :return: The status of the create operation as a bool.
         """
         if not index.islower():
             self.log.error(
@@ -553,7 +553,7 @@ class DataStore(metaclass=DBInheritanceMeta):
         scroll_id, results = self.start_scroll(
             index, query=query, sort=sort, timeout=timeout, size=size
         )
-        # Yield any results from the intitial query, or return
+        # Yield any results from the initial query, or return
         if results:
             yield from results
         else:
@@ -690,5 +690,5 @@ class DataStore(metaclass=DBInheritanceMeta):
         # Get aggregation
         result = self.search(index=index, body=body)
 
-        # Need to check classes here... this is straighforward
+        # Need to check classes here... this is straightforward
         return result

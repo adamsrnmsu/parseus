@@ -191,7 +191,7 @@ def search_based_make_alerts(fit_docs, run_docs, suppression=None, now=None):
 def split_days(dicts_with_timestamp):
     """
     Takes a list of dicts that have '@timestamp' fields
-    Returns a list of lists of dicts that are seperated by day.
+    Returns a list of lists of dicts that are separated by day.
     """
     list_of_day_lists = []
     current_day_list = []

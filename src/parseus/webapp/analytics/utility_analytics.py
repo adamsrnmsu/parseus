@@ -194,7 +194,7 @@ def train(analytic_db_obj, user_input, logger):
         else:
             instance_name = model_name
         if not analytic_class.requires_fit():
-            logger.debug(f"{analytic_db_obj.name}: analytic didnt require fit")
+            logger.debug(f"{analytic_db_obj.name}: analytic didn't require fit")
             return
 
         init_args = with_operator_rules(

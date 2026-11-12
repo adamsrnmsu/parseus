@@ -107,7 +107,7 @@ class ExcessiveConversationAnalytic(Analytic):
         self.logic_ = OutsideStdDevModel()
         self.calendar_interval = calendar_interval
         self.predict_results_doc = """
-        Shows any devices in a given hour/day where the ammount of
+        Shows any devices in a given hour/day where the amount of
         dest ips it attempts to reach fall outside the trained mean/stdev
         """
         self.fit_results_doc = """

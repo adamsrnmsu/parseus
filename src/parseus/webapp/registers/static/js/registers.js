@@ -464,7 +464,7 @@ function draw(graph_id, datasets, normalized=false, options={}) {
     return svg;
 }
 
-// helper function thats used for the y axis to wrap long phrases
+// helper function that's used for the y axis to wrap long phrases
 function wrapy(text, width) {
     text.each(function() {
       var text = d3.select(this),

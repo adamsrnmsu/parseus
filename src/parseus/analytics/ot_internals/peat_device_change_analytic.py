@@ -61,7 +61,7 @@ class PeatDeviceChangeAnalytic(Analytic):
         self.predict_results_doc = """
         Baseline for each device detected by a peat scan.
         Alerts for each new device detected by the second peat scan.
-        Alerts also for each device detected by the traning peat scan
+        Alerts also for each device detected by the training peat scan
         but not detected on the second scan.
         """
         self.fit_results_doc = """

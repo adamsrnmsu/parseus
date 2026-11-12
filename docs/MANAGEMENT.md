@@ -277,7 +277,7 @@ This creates a versioned tarball under `dist/`:
 
     dist/parseus-<version>.tar.gz
 
-For example, version `1.2.3` produces `dist/parseus-1.2.3.tar.gz`.
+For example, version `2026.11.02` produces `dist/parseus-2026.11.02.tar.gz`.
 
 Transfer the tarball to the target system, extract it, and install from the extracted directory:
 
@@ -315,7 +315,7 @@ Open a web browser to Parseus after upgrade completes:
 
     sudo manage-parseus upgrade --open-browser
 
-Upgrade logs the application version transition recorded in the install manifest, for example `Upgrading Parseus 1.2.3 -> 1.2.4`. If both the current and target versions are comparable numeric versions, the command refuses an accidental downgrade. To perform an intentional downgrade, pass:
+Upgrade logs the application version transition recorded in the install manifest, for example `Upgrading Parseus 2026.11.02 -> 2026.12.01`. If both the current and target versions are comparable numeric versions, the command refuses an accidental downgrade. To perform an intentional downgrade, pass:
 
     sudo manage-parseus upgrade --allow-downgrade
 

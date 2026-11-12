@@ -141,7 +141,7 @@ def _none_if_blank(value):
 
 def get_timerange(ds_client, index_name, start=None, end=None):
     """
-    Gets start and end times specified in the config file, or overide
+    Gets start and end times specified in the config file, or override
     with user provided values.
     """
     start = _none_if_blank(start)

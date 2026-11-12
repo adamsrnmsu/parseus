@@ -30,7 +30,7 @@ def test_get_datastore():
 def test_index_create_exists_delete():
     """
     Verify that the datastore is able to create and delete an index.
-    Checks the existance of the index between each step.
+    Checks the existence of the index between each step.
     """
     datastore = client.get_datastore(DATASTORE_HOST_URL, DATASTORE_TYPE)
     exists = datastore.index_exists(index=TEST_INDEX)

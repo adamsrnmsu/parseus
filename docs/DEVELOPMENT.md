@@ -102,32 +102,23 @@ It reads the release version from `pyproject.toml` and writes a bundle named
 
 Parseus uses `pyproject.toml` `[project].version` as the source of truth for the application release version. Do not hardcode release versions in packaging scripts, Compose files, Docker labels, or documentation examples when `parseus-<version>` can be used instead.
 
-Release versions should follow Semantic Versioning (`MAJOR.MINOR.PATCH`):
+Releases are made with [releasaurus](https://releasaurus.rgon.io), configured in `releasaurus.toml` and run by `.github/workflows/release.yml`. Release versions are calendar versions (`YYYY.MM.DD`, for example `2026.11.02`) and release tags are the version prefixed with `v` (`v2026.11.02`). Releases before the switch to calendar versioning used Semantic Versioning (`v1.0.0`).
 
-- increment `MAJOR` for incompatible changes
-- increment `MINOR` for backward-compatible feature additions
-- increment `PATCH` for backward-compatible bug fixes or documentation-only release corrections
+Contributors do not bump the version, tag, or edit `CHANGELOG.md`. Instead:
 
-Release tags must use the format `vX.Y.Z`, for example `v1.2.3`. The tag's numeric part must exactly match `[project].version` in `pyproject.toml`.
+1. Commit subjects follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) (`.github/workflows/commits.yml` checks pull requests), and pull requests are rebase-merged so each commit lands on `main`.
+2. Each push to `main` opens or updates a release pull request that sets `pyproject.toml` `[project].version` to the next date, prepends the generated changelog to `CHANGELOG.md`, and links each entry to its pull request.
+3. A maintainer merges the release pull request. releasaurus then tags `v<version>` and publishes the GitHub release notes.
 
-Before creating a release tag:
+A repository setting must allow it: Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
 
-1. Update `pyproject.toml` `[project].version` to the intended SemVer value.
-2. Update release notes or changelog material, if present for the release.
-3. Build the release package:
+Tags created by the default `GITHUB_TOKEN` do not trigger other workflows, so the `verify` job in `release.yml` runs the same two release checks as `ci.yml` on the new tag:
 
-       make package
-
-4. Confirm the generated archive path uses the intended version, for example `dist/parseus-<version>.tar.gz`.
-5. Commit the version and documentation changes.
-6. Create and push the matching tag:
-
-       git tag v<version>
-       git push <remote> v<version>
-
-GitLab CI performs release validation for tag pipelines:
-
-- `verify-version` strips the leading `v` from `CI_COMMIT_TAG` and compares it to `pyproject.toml` `[project].version`.
+- `verify-version` strips the leading `v` from the tag and compares it to `pyproject.toml` `[project].version`.
 - `verify-release-compose` verifies Compose-rendered Parseus images use `parseus:<version>`, rejects hardcoded versioned image references in Compose files, and rejects `parseus:dev` in release image lists.
+
+A tag pushed by hand with a user token still runs both jobs in `ci.yml`.
+
+Python normalizes version strings (PEP 440), so installed package metadata and `parseus.__version__` report `2026.11.2` for `2026.11.02`. The tag, the Compose image tags, the bundle name, and the installation manifest all use the unnormalized `pyproject.toml` string, so they stay aligned with each other.
 
 The Makefile exports `PARSEUS_VERSION` from `pyproject.toml` so Docker image tags, Compose rendering, and package names stay aligned. The management installer records the resolved application version in the installation manifest; `manage-parseus status` prints it as `App version: <version>`.

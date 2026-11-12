@@ -467,7 +467,7 @@ def test_nanaverage_weights_as_pandas_like_object_converted_to_array():
 
 def test_nanaverage_weights_sum_zero_produces_nan():
     """
-    Test numerical.nanaverage for case of zero wights
+    Test numerical.nanaverage for case of zero weights
     """
     data = np.array([1.0, 2.0, 3.0])
     zero_weights = np.zeros_like(data)

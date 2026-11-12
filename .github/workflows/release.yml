@@ -1,0 +1,127 @@
+name: Release
+
+# Releases with releasaurus (see releasaurus.toml). Each push to main opens or
+# updates a release PR that names the next version (vYYYY.MM.DD), prepends its
+# changelog to CHANGELOG.md, and sets the version in pyproject.toml. Merging
+# that PR tags the release and publishes its notes.
+#
+# Tags created with the default GITHUB_TOKEN do not trigger other workflows, so
+# the tag-gated jobs in ci.yml (verify-version, verify-release-compose) never
+# fire for a releasaurus release. The `verify` job runs the same two checks on
+# the tag the `releasaurus` job just created. No PAT or App secret is needed.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Show what would be released without changing anything
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  releasaurus:
+    name: Release
+    # Forks don't release, but can preview with a dry run.
+    if: github.repository == 'sandialabs/parseus' || inputs.dry-run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      tag: ${{ steps.after.outputs.tag }}
+    steps:
+      - name: Record the existing tags
+        id: before
+        run: echo "tags=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref' | sort | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and publish a merged release PR
+        uses: robgonnella/releasaurus/action@9843e67bc1fdd96c0cf033c9b5b24a1e2fc91c77 # v1.3.0
+        with:
+          command: release
+          command_args: >-
+            --forge github
+            --repo ${{ github.server_url }}/${{ github.repository }}
+            ${{ env.DRY_RUN }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Record the new tag
+        id: after
+        env:
+          BEFORE: ${{ steps.before.outputs.tags }}
+        run: |
+          tag=''
+          for ref in $(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref'); do
+            case " $BEFORE" in *" $ref "*) ;; *) tag="${ref#refs/tags/}" ;; esac
+          done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "new release tag: ${tag:-none}"
+
+      - name: Open or update the release PR
+        uses: robgonnella/releasaurus/action@9843e67bc1fdd96c0cf033c9b5b24a1e2fc91c77 # v1.3.0
+        with:
+          command: release-pr
+          command_args: >-
+            --forge github
+            --repo ${{ github.server_url }}/${{ github.repository }}
+            ${{ env.DRY_RUN }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  verify:
+    name: Verify the release tag
+    # Same checks as ci.yml verify-version + verify-release-compose. A dry run
+    # creates no tag, so `tag` is empty and this job is skipped.
+    needs: [releasaurus]
+    if: needs.releasaurus.outputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.releasaurus.outputs.tag }}
+          persist-credentials: false
+
+      - name: Verify tag version matches pyproject.toml and compose image versions
+        env:
+          TAG: ${{ needs.releasaurus.outputs.tag }}
+        run: |
+          export PARSEUS_VERSION="${TAG#v}"
+          PROJECT_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "$PARSEUS_VERSION" = "$PROJECT_VERSION"
+
+          if grep -REn "image:[[:space:]]*parseus:[0-9A-Za-z._-]" compose.build.yaml compose.images.yaml; then
+            echo "Hardcoded parseus image version found in compose files"
+            exit 1
+          fi
+
+          docker compose -f compose.build.yaml config --images | tee build-images.txt
+          docker compose -f compose.images.yaml config --images | tee runtime-images.txt
+
+          grep -qx "parseus:${PARSEUS_VERSION}" build-images.txt
+          grep -qx "parseus:${PARSEUS_VERSION}" runtime-images.txt
+
+          awk -v expected="parseus:${PARSEUS_VERSION}" '
+            index($0, "parseus:") == 1 && $0 != expected {
+              print "Unexpected Parseus image: " $0 " (expected " expected ")"
+              bad=1
+            }
+            END { exit bad }
+          ' build-images.txt runtime-images.txt
+
+          if grep -q "parseus:dev" build-images.txt runtime-images.txt; then
+            echo "Found parseus:dev image in rendered compose config"
+            exit 1
+          fi

@@ -33,7 +33,7 @@ class PeatServiceChangeAnalytic(Analytic):
     ----------------------------------
     How: Compares PEAT result directories for changes in the names, open ports, and running/inactive status of device services
 
-    When: You have run PEAT pull previously and want to identify changes in discoved devices
+    When: You have run PEAT pull previously and want to identify changes in discovered devices
 
     Usage: <>
 

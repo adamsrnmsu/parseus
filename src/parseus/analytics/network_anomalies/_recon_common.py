@@ -8,7 +8,7 @@ import pandas as pd
 def build_interval_counter(interval_data, outer_agg, inner_agg, **kwargs):
     """
     Takes documents returned from a nested datastore aggregation.
-    Creates a dataframe with columns for the seperate aggregation values.
+    Creates a dataframe with columns for the separate aggregation values.
     """
     data_tuples = {}
     for interval in interval_data:

@@ -1,0 +1,3 @@
+[codespell]
+# ot: operational technology; thur: weekday key; earch: "{Open,Elastics}earch" brace pattern; tabel: JS tabEl variable; unparseable: accepted spelling
+ignore-words-list = ot,thur,earch,tabel,unparseable

@@ -143,7 +143,7 @@ def get_datastore_data(
     :param end: latest time to get documents from
     :param logger: logger object
     :param query: filter list to add to query (reduces bandwidth of response)
-    :param aggs: Optional argument incase we are looking for aggregations from the datastore
+    :param aggs: Optional argument in case we are looking for aggregations from the datastore
     :param return_fields: List of fields datastore should return;
                           saves bandwidth and memory over returning all fields for every document
     :return: ESData object that will lazily return documents

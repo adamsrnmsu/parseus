@@ -22,7 +22,7 @@ def parse_data(data_list: list) -> dict:
     """
     parsed_data = {}
     for entry in data_list:
-        initial_split = entry.split(" ")  # split on the space seperator
+        initial_split = entry.split(" ")  # split on the space separator
         command = initial_split[0]
         if len(initial_split) > 1:
             value = initial_split[1]
