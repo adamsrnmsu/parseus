@@ -1,7 +1,6 @@
 import json
 
 from django import forms
-from django.core.exceptions import ValidationError as DjangoValidationError
 
 from .models import SysmonRule
 
@@ -72,30 +71,17 @@ class SysmonRuleForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        required_fields = {"name", "analytic_type", "match_value", "timezone"}
-        if "allowed_windows_json" not in cleaned_data or not required_fields.issubset(cleaned_data):
-            return cleaned_data
-
-        self.instance.allowed_windows = cleaned_data.get("allowed_windows_json", [])
-        for field in (
-            "name",
-            "analytic_type",
-            "match_value",
-            "enabled",
-            "timezone",
-            "description",
-        ):
-            if field in cleaned_data:
-                setattr(self.instance, field, cleaned_data[field])
-
-        try:
-            self.instance.clean()
-        except DjangoValidationError as err:
-            for field, errors in getattr(err, "message_dict", {}).items():
-                form_field = "allowed_windows_json" if field == "allowed_windows" else field
-                for error in errors:
-                    self.add_error(form_field, error)
+        if "allowed_windows_json" in cleaned_data:
+            # Model validation runs afterwards in ModelForm._post_clean.
+            self.instance.allowed_windows = cleaned_data["allowed_windows_json"]
         return cleaned_data
+
+    def _update_errors(self, errors):
+        """Report model ``allowed_windows`` errors on the form's JSON field."""
+        error_dict = getattr(errors, "error_dict", None)
+        if error_dict and "allowed_windows" in error_dict:
+            error_dict["allowed_windows_json"] = error_dict.pop("allowed_windows")
+        super()._update_errors(errors)
 
     def save(self, commit=True):
         instance = super().save(commit=False)

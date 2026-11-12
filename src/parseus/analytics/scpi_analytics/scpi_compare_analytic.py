@@ -140,6 +140,28 @@ def search_based_compare(fit_dataset, run_docs, suppression=None, now=None):
     return list_of_alerts
 
 
+def _value_alerts(docs, action, label, comparison_timestamp, suppression, now, timestamp_of):
+    alerts = []
+    for doc in docs:
+        func_code = doc["func_code"]
+        if func_code and (
+            suppression is None or suppression.should_emit(func_code, action, now=now)
+        ):
+            alerts.append(
+                build_ecs_alert(
+                    action=action,
+                    original=label.format(func_code),
+                    riskscore=5.0,
+                    category="network",
+                    kind="alert",
+                    timestamp=timestamp_of(doc),
+                    event_extra={"ground_truth_date": comparison_timestamp},
+                    handled=False,
+                )
+            )
+    return alerts
+
+
 def search_based_make_alerts(fit_docs, run_docs, suppression=None, now=None):
     """
     Returns alert dicts for all func_codes added or removed between the fit and run data,
@@ -147,45 +169,15 @@ def search_based_make_alerts(fit_docs, run_docs, suppression=None, now=None):
     """
     comparison_timestamp = fit_docs[0]["@timestamp"] if fit_docs else datetime.now(timezone.utc)
     run_data_timestamp = run_docs[0]["@timestamp"] if run_docs else datetime.now(timezone.utc)
-    alerts = []
-    for value_removed in fit_docs:
-        func_code = value_removed["func_code"]
-        if func_code and (
-            suppression is None
-            or suppression.should_emit(func_code, "Value Removed", now=now)
-        ):
-            alerts.append(
-                build_ecs_alert(
-                    action="Value Removed",
-                    original=f"Detected value removed: {func_code}",
-                    riskscore=5.0,
-                    category="network",
-                    kind="alert",
-                    timestamp=run_data_timestamp,
-                    event_extra={"ground_truth_date": comparison_timestamp},
-                    handled=False,
-                )
-            )
-    for value_added in run_docs:
-        func_code = value_added["func_code"]
-        if func_code and (
-            suppression is None
-            or suppression.should_emit(func_code, "Value Added", now=now)
-        ):
-            current_time = value_added["@timestamp"]
-            alerts.append(
-                build_ecs_alert(
-                    action="Value Added",
-                    original=f"Detected added value: {func_code}",
-                    riskscore=5.0,
-                    category="network",
-                    kind="alert",
-                    timestamp=current_time,
-                    event_extra={"ground_truth_date": comparison_timestamp},
-                    handled=False,
-                )
-            )
-    return alerts
+    removed = _value_alerts(
+        fit_docs, "Value Removed", "Detected value removed: {}",
+        comparison_timestamp, suppression, now, lambda _doc: run_data_timestamp,
+    )
+    added = _value_alerts(
+        run_docs, "Value Added", "Detected added value: {}",
+        comparison_timestamp, suppression, now, lambda doc: doc["@timestamp"],
+    )
+    return removed + added
 
 
 def split_days(dicts_with_timestamp):

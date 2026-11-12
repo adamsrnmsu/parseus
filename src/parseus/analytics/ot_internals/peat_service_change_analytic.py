@@ -15,6 +15,99 @@ from parseus.preprocessors.peat_dir import (
 )
 from parseus.preprocessors.transform import compose
 
+
+def _ports(services, protocol):
+    return [s["port"] for s in services if s["protocol"] == protocol]
+
+
+def _statuses(services, protocol):
+    return [(s["status"], s["port"]) for s in services if s["protocol"] == protocol]
+
+
+def _service_alert(current, previous, description, host):
+    """Build a service-change alert carrying the current/previous pull times."""
+    return build_ecs_alert(
+        "service changed on device",
+        description,
+        3.0,
+        category=["host"],
+        timestamp=datetime_parser(current[0]),
+        host={
+            **host,
+            "current_pull": datetime_parser(current[0]),
+            "previous_pull": datetime_parser(previous[0]),
+        },
+    )
+
+
+def _port_change_alert(device, protocol, current, previous):
+    ports_added = _ports(current[1], protocol)
+    ports_removed = _ports(previous[1], protocol)
+    if set(ports_added) == set(ports_removed):
+        return None
+    return _service_alert(
+        current,
+        previous,
+        f"Device {device} has changed ports for protocol {protocol}: changed from ports {ports_removed} to ports {ports_added}",
+        {
+            "device": device,
+            "protocol": protocol,
+            "ports_old": ports_removed,
+            "ports_new": ports_added,
+        },
+    )
+
+
+def _status_change_alert(device, protocol, current, previous):
+    status_added = _statuses(current[1], protocol)
+    status_removed = _statuses(previous[1], protocol)
+    if {s[0] for s in status_added} == {s[0] for s in status_removed}:
+        return None
+    return _service_alert(
+        current,
+        previous,
+        f"Device {device} has changed open/closed status for protocol {protocol} on the following ports: changed from status {status_removed} to status {status_added}",
+        {
+            "device": device,
+            "protocol": protocol,
+            "status_old": status_removed,
+            "status_new": status_added,
+        },
+    )
+
+
+def _service_alerts(device, current, previous):
+    """Alerts for one device: per-protocol port/status changes, then the service diff.
+
+    ``current``/``previous`` are ``(timestamp, [service dict, ...])`` pulls.
+    """
+    alerts = []
+    # TODO: generate alerts for changed TCP/UDP transport protocol?
+    protocols_shared = {s["protocol"] for s in current[1]} & {
+        s["protocol"] for s in previous[1]
+    }
+    for protocol in protocols_shared:
+        for build in (_port_change_alert, _status_change_alert):
+            alert = build(device, protocol, current, previous)
+            if alert:
+                alerts.append(alert)
+
+    # Simple diff to compare service ports, availability, and transport protocols
+    # Preserving all info for postprocessing
+    added = [s for s in current[1] if s not in previous[1]]
+    removed = [s for s in previous[1] if s not in current[1]]
+    if added or removed:
+        alerts.append(
+            _service_alert(
+                current,
+                previous,
+                f"Device {device} has changed services: {added} were added, {removed} were removed",
+                {"services_added": added, "service_removed": removed},
+            )
+        )
+    return alerts
+
+
 @register_analytic(
     key="PeatServiceChangeAnalytic",
     family="ot_internals",
@@ -70,127 +163,11 @@ class PeatServiceChangeAnalytic(Analytic):
         self.training_device_services_ = device_services
 
     def _run(self, start, end, peat_docs, state, **other_docs) -> list:
-        device_services = peat_docs
         alerts = []
-
-        for device in device_services:
-            if device not in self.training_device_services_:
-                continue
-            diff_services_added = []
-            diff_services_removed = []
-            for service in device_services[device][1]:
-                if service not in self.training_device_services_[device][1]:
-                    diff_services_added.append(service)
-
-            for service in self.training_device_services_[device][1]:
-                if service not in device_services[device][1]:
-                    diff_services_removed.append(service)
-
-            protocols_shared = set(
-                [service["protocol"] for service in device_services[device][1]]
-            ).intersection(
-                set(
-                    [
-                        service["protocol"]
-                        for service in self.training_device_services_[device][1]
-                    ]
-                )
-            )
-
-            # Highlight changed ports or open/close services
-            # TODO: generate alerts for changed TCP/UDP transport protocol?
-            for protocol in protocols_shared:
-                # Alert on changed ports
-                ports_added = [
-                    service["port"]
-                    for service in device_services[device][1]
-                    if service["protocol"] == protocol
-                ]
-                ports_removed = [
-                    service["port"]
-                    for service in self.training_device_services_[device][1]
-                    if service["protocol"] == protocol
-                ]
-
-                if set(ports_added) != set(ports_removed):
-                    alerts.append(
-                        build_ecs_alert(
-                            "service changed on device",
-                            f"Device {device} has changed ports for protocol {protocol}: changed from ports {ports_removed} to ports {ports_added}",
-                            3.0,
-                            category=["host"],
-                            timestamp=datetime_parser(device_services[device][0]),
-                            host={
-                                "device": device,
-                                "protocol": protocol,
-                                "ports_old": ports_removed,
-                                "ports_new": ports_added,
-                                "current_pull": datetime_parser(
-                                    device_services[device][0]
-                                ),
-                                "previous_pull": datetime_parser(
-                                    self.training_device_services_[device][0]
-                                ),
-                            },
-                        )
-                    )
-
-                # Alert on a service becoming available/unavailable
-                status_added = [
-                    (service["status"], service["port"])
-                    for service in device_services[device][1]
-                    if service["protocol"] == protocol
-                ]
-                status_removed = [
-                    (service["status"], service["port"])
-                    for service in self.training_device_services_[device][1]
-                    if service["protocol"] == protocol
-                ]
-
-                if set([status[0] for status in status_added]) != set(
-                    [status[0] for status in status_removed]
-                ):
-                    alerts.append(
-                        build_ecs_alert(
-                            "service changed on device",
-                            f"Device {device} has changed open/closed status for protocol {protocol} on the following ports: changed from status {status_removed} to status {status_added}",
-                            3.0,
-                            category=["host"],
-                            timestamp=datetime_parser(device_services[device][0]),
-                            host={
-                                "device": device,
-                                "protocol": protocol,
-                                "status_old": status_removed,
-                                "status_new": status_added,
-                                "current_pull": datetime_parser(
-                                    device_services[device][0]
-                                ),
-                                "previous_pull": datetime_parser(
-                                    self.training_device_services_[device][0]
-                                ),
-                            },
-                        )
-                    )
-
-            # Simple diff to compare service ports, availability, and transport protocols
-            # Preserving all info for postprocessing
-            if diff_services_added or diff_services_removed:
-                alerts.append(
-                    build_ecs_alert(
-                        "service changed on device",
-                        f"Device {device} has changed services: {diff_services_added} were added, {diff_services_removed} were removed",
-                        3.0,
-                        category=["host"],
-                        timestamp=datetime_parser(device_services[device][0]),
-                        host={
-                            "services_added": diff_services_added,
-                            "service_removed": diff_services_removed,
-                            "current_pull": datetime_parser(device_services[device][0]),
-                            "previous_pull": datetime_parser(
-                                self.training_device_services_[device][0]
-                            ),
-                        },
-                    )
+        for device, current in peat_docs.items():
+            if device in self.training_device_services_:
+                alerts.extend(
+                    _service_alerts(device, current, self.training_device_services_[device])
                 )
         return alerts
 

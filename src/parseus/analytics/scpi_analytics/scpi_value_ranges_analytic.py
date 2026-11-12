@@ -139,65 +139,42 @@ class ScpiValueRangesAnalytic(Analytic):
         return alerts
 
 
+def _missing(run_items, fit_items):
+    return [x for x in run_items if x not in fit_items]
+
+
+def _findings(run_arguments, fit_arguments):
+    """Yield (alert_type, alert_value) for each check the run arguments trip."""
+    if values_out_of_range(run_arguments, fit_arguments):
+        yield "values outside range of training data", run_arguments
+    if unfamilar_channel(run_arguments, fit_arguments):
+        yield "unfamliar channel used", _missing(
+            run_arguments["channels"], fit_arguments["channels"]
+        )
+    if unfamiliar_value(run_arguments, fit_arguments):
+        yield "unfamliar value found", _missing(
+            run_arguments["value"], fit_arguments["value"]
+        )
+    if unfamiliar_label(run_arguments, fit_arguments):
+        yield "unfamliar label found", _missing(run_arguments, fit_arguments)
+
+
 def find_command_alerts(
     command, run_arguments, fit_arguments, timestamp, suppression=None, now=None
 ):
     alerts = []
-    if values_out_of_range(run_arguments, fit_arguments):
-        alert_type = "values outside range of training data"
+    for alert_type, alert_value in _findings(run_arguments, fit_arguments):
         if suppression is None or suppression.should_emit(
             command, alert_type, now=now
         ):
-            alert = build_alert(
-                alert_value=run_arguments,
-                timestamp=timestamp,
-                alert_type=alert_type,
-                command=command,
+            alerts.append(
+                build_alert(
+                    alert_value=alert_value,
+                    timestamp=timestamp,
+                    alert_type=alert_type,
+                    command=command,
+                )
             )
-            alerts.append(alert)
-    if unfamilar_channel(run_arguments, fit_arguments):
-        alert_type = "unfamliar channel used"
-        if suppression is None or suppression.should_emit(
-            command, alert_type, now=now
-        ):
-            channel_list = [
-                x
-                for x in run_arguments["channels"]
-                if x not in fit_arguments["channels"]
-            ]
-            alert = build_alert(
-                alert_value=channel_list,
-                timestamp=timestamp,
-                alert_type=alert_type,
-                command=command,
-            )
-            alerts.append(alert)
-    if unfamiliar_value(run_arguments, fit_arguments):
-        alert_type = "unfamliar value found"
-        if suppression is None or suppression.should_emit(
-            command, alert_type, now=now
-        ):
-            alert = build_alert(
-                alert_value=[
-                    x for x in run_arguments["value"] if x not in fit_arguments["value"]
-                ],
-                timestamp=timestamp,
-                alert_type=alert_type,
-                command=command,
-            )
-            alerts.append(alert)
-    if unfamiliar_label(run_arguments, fit_arguments):
-        alert_type = "unfamliar label found"
-        if suppression is None or suppression.should_emit(
-            command, alert_type, now=now
-        ):
-            alert = build_alert(
-                alert_value=[x for x in run_arguments if x not in fit_arguments],
-                timestamp=timestamp,
-                alert_type=alert_type,
-                command=command,
-            )
-            alerts.append(alert)
     return alerts
 
 

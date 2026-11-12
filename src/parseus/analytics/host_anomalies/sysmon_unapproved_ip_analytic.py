@@ -6,7 +6,6 @@ Looks for IP references that are not in the whitelist.
 from parseus.analytics.base import Analytic
 from parseus.analytics.core import build_ecs_alert
 from parseus.analytics.core.suppression import SuppressionWindow
-from parseus.analytics.core.suppression import window_now as _window_now
 from parseus.analytics.core.operator_rules import OperatorRuleMixin
 from parseus.analytics.capabilities import (
     ElasticsearchSource,
@@ -15,8 +14,8 @@ from parseus.analytics.capabilities import (
     Unsupervised,
 )
 from parseus.analytics.host_anomalies.rules import (
+    alert_rule_context,
     describe_allowed_windows,
-    evaluate_allow_rules,
 )
 from parseus.analytics.host_anomalies.sysmon_helpers import (
     extract_timestamp_from_aggregation,
@@ -114,40 +113,31 @@ def make_alerts(
 ):
     "Use allow-list and schedule rules to return IP alerts."
     alerts = []
-    known_good_ips = set(known_good_ips or [])
+    known_good = set(known_good_ips or [])
     for ip_dict in ip_dicts:
         ip = ip_dict["ip"]
-        allowed, rule, reason = evaluate_allow_rules(
+        context = alert_rule_context(
             ip,
             ip_dict["@timestamp"],
             ip_rules,
-            value_keys=("ips",),
-            default_timezone=default_timezone,
+            known_good,
+            ("ips",),
+            default_timezone,
+            window,
+            now,
         )
-
-        if allowed is True:
+        if context is None:
             continue
-        if allowed is None and ip in known_good_ips:
-            continue
-
-        # Per-IP suppression window keyed on the run clock: default "0s" always
-        # emits (unchanged); a configured window re-alerts a given IP at most
-        # once per window.
-        if window is not None and not window.should_emit(ip, now=_window_now(now)):
-            continue
-
-        if reason == "outside_allowed_window":
-            rule_name = rule.get("name", "unnamed rule") if rule else "unnamed rule"
+        rule, rule_fields = context
+        if rule is not None:
             original = (
                 f"IP {ip} was seen outside approved access window for "
-                f"rule '{rule_name}'. Allowed windows: {describe_allowed_windows(rule)}"
+                f"rule '{rule_fields['name']}'. Allowed windows: {describe_allowed_windows(rule)}"
             )
             action = "IP Outside Approved Window"
-            rule_fields = {"name": rule_name, "reason": reason}
         else:
             original = f"NEW IP {ip}"
             action = "NEW IP, CHECK IP"
-            rule_fields = {"reason": "not_in_whitelist"}
 
         alerts.append(
             build_ecs_alert(

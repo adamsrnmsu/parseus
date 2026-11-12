@@ -87,6 +87,147 @@ def function_code_transform(docs, protocols, **kwargs):
     return df_final.set_index("@timestamp")
 
 
+_RESTART_CODES = {"cold restart", "warm restart", "stop application"}
+
+
+class _AlertRun:
+    """Alerts built so far in one run, plus which finding keys they already cover."""
+
+    def __init__(self, suppression, now, end):
+        self.suppression = suppression
+        self.now = now
+        self.end = end
+        self.covered = set()
+        self.alerts = []
+
+    def skip(self, key):
+        """True if ``key`` was alerted this run or is inside its suppression window."""
+        return key in self.covered or self.suppression.already_suppressed(
+            key, now=self.now
+        )
+
+    def emit(self, alert, keys):
+        """Add ``alert`` and mark each of ``keys`` covered and suppressed."""
+        self.alerts.append(alert)
+        for key in keys:
+            self.covered.add(key)
+            self.suppression.record(key, now=self.now)
+
+
+def _first_active_time(df, column):
+    """Timestamp of the first row where ``column`` is non-zero."""
+    return datetime_parser(f"{df.loc[df[column] != 0].index[0]}")
+
+
+def _ot_alert(run, action, original, ips, protocol, field, value, timestamp):
+    source, destination = ips.split("_")[0], ips.split("_")[1]
+    return build_ecs_alert(
+        action=action,
+        original=original,
+        riskscore=5.0,
+        category=["network"],
+        kind="alert",
+        timestamp=timestamp,
+        event_extra={"time": run.end},
+        source={"ip": source},
+        network={"source": source, "destination": destination},
+        **{protocol: {field: value}},
+    )
+
+
+def _dos_alerts(run, dataset, hours):
+    """Condense Cold Restart/Warm Restart/Stop Application bursts into DoS alerts."""
+    # TODO: Heuristic for detecting DoS attacks. Needs new model approach? Still want to alert if high-frequency and new/same as baseline
+    # Alert on entire ips/code column, like with anomalous high codes, or on individual time buckets?
+    # Currently alerting on entire column, leaving code structure to switch to hourly intervals in the future
+    for ips_and_code in dataset.columns:
+        if run.skip(ips_and_code):
+            continue
+        ips, protocol, code = ips_and_code.split(":")
+        if code.lower() not in _RESTART_CODES:
+            continue
+        if any(count >= 30.0 * hours for count in dataset[ips_and_code]):
+            timestamp = _first_active_time(dataset, ips_and_code)
+            alert = _ot_alert(
+                run,
+                "possible denial-of-service",
+                f"Possible Denial-Of-Service from {protocol}:{code} in {ips} starting at {timestamp}",
+                ips,
+                protocol,
+                "function_code",
+                code,
+                timestamp,
+            )
+            run.emit(alert, [ips_and_code])
+
+
+def _enumeration_alerts(run, dataset, new_func_codes):
+    """Condense 10+ new function codes per src/dst/protocol into one enumeration alert."""
+    new_codes = defaultdict(list)
+    for ips_and_code in new_func_codes:
+        if run.skip(ips_and_code):
+            continue
+        ips, protocol, code = ips_and_code.split(":")
+        new_codes[ips + ":" + protocol].append(code)
+    for ips_protocol_new, func_codes in new_codes.items():
+        # TODO: Heuristic for detecting enumeration attack. Needs fine-tuning - use std dev model?
+        if len(func_codes) < 10:
+            continue
+        ips, protocol = ips_protocol_new.split(":")
+        alert = _ot_alert(
+            run,
+            "possible function code enumeration",
+            f"Possible Function Code Enumeration over {protocol} on {ips}: {func_codes}",
+            ips,
+            protocol,
+            "function_codes",
+            func_codes,
+            _first_active_time(dataset, ips_protocol_new + ":" + func_codes[0]),
+        )
+        run.emit(alert, [ips_protocol_new + ":" + code for code in func_codes])
+
+
+def _new_code_alerts(run, dataset, new_func_codes):
+    """Alert on each function code not seen in the baseline."""
+    for ips_and_code in new_func_codes:
+        if run.skip(ips_and_code):
+            continue
+        ips, protocol, code = ips_and_code.split(":")
+        alert = _ot_alert(
+            run,
+            "new function code",
+            f"New Function Codes {protocol}:{code} on {ips}",
+            ips,
+            protocol,
+            "function_code",
+            code,
+            _first_active_time(dataset, ips_and_code),
+        )
+        run.emit(alert, [ips_and_code])
+
+
+def _rate_alerts(run, anomalies):
+    """Alert on known function codes whose rate rose 2+ std dev over baseline."""
+    if anomalies.empty:
+        return
+    for ips_and_code in anomalies.columns:
+        if run.skip(ips_and_code):
+            continue
+        ips, protocol, code = ips_and_code.split(":")
+        timestamp = _first_active_time(anomalies, ips_and_code)
+        alert = _ot_alert(
+            run,
+            "increased function code rate",
+            f"Increased rate of {protocol}:{code} on {ips} starting at {timestamp}",
+            ips,
+            protocol,
+            "function_code",
+            code,
+            timestamp,
+        )
+        run.emit(alert, [ips_and_code])
+
+
 @register_analytic(
     key="OTFunctionCodeAnomalyAnalytic",
     family="ot_network",
@@ -232,170 +373,26 @@ class OTFunctionCodeAnomalyAnalytic(Analytic):
     def _run(self, start, end, func_codes_dataset, state, **other_docs):
         # Per-finding suppression: re-alerting for the same OT function-code finding is
         # controlled by the analytic's configured suppression window.
-        suppression = SuppressionWindow(state, self.suppression_)
-        now = window_now(end)
-        covered_this_run = set()
+        run = _AlertRun(SuppressionWindow(state, self.suppression_), window_now(end), end)
 
         # Find new function codes, not seen in the fit baseline
         orig_columns = set(self.logic_.stats_df.index)
-        run_columns = set(func_codes_dataset.columns)
-        new_func_codes = run_columns - orig_columns
+        new_func_codes = set(func_codes_dataset.columns) - orig_columns
 
         # Find anomalous high amounts of a function code
         _, anomaly_func_code_results = self.logic_.run_table(
             None, func_codes_dataset, buffer=3
         )
 
-        alerts = []
-
-        # Condense alerts for Cold Restart/Warm Restart/Stop Application attacks
-        if not func_codes_dataset.empty:
-            for ips_and_code in func_codes_dataset.columns:
-                if ips_and_code in covered_this_run:
-                    continue
-                if suppression.already_suppressed(ips_and_code, now=now):
-                    continue
-                ips, protocol, code = ips_and_code.split(":")
-                if (
-                    code.lower() == "cold restart"
-                    or code.lower() == "warm restart"
-                    or code.lower() == "stop application"
-                ):
-                    # TODO: Heuristic for detecting DoS attacks. Needs new model approach? Still want to alert if high-frequency and new/same as baseline
-                    # Alert on entire ips/code column, like with anomalous high codes, or on individual time buckets?
-                    # Currently alerting on entire column, leaving code structure to switch to hourly intervals in the future
-                    for count in func_codes_dataset[ips_and_code]:
-                        if ips_and_code in covered_this_run:
-                            continue
-                        if suppression.already_suppressed(ips_and_code, now=now):
-                            continue
-                        if count >= 30.0 * self.hours:
-                            timestamp = datetime_parser(
-                                f"{func_codes_dataset.loc[func_codes_dataset[ips_and_code]!=0].index[0]}"
-                            )
-                            dos_alert = build_ecs_alert(
-                                action="possible denial-of-service",
-                                original=f"Possible Denial-Of-Service from {protocol}:{code} in {ips} starting at {timestamp}",
-                                riskscore=5.0,
-                                category=["network"],
-                                kind="alert",
-                                timestamp=timestamp,
-                                event_extra={"time": end},
-                                source={"ip": ips.split("_")[0]},
-                                network={
-                                    "source": ips.split("_")[0],
-                                    "destination": ips.split("_")[1],
-                                },
-                                **{protocol: {"function_code": code}},
-                            )
-                            alerts.append(dos_alert)
-                            covered_this_run.add(ips_and_code)
-                            suppression.record(ips_and_code, now=now)
-
-        # Condense alerts for enumeration attacks
-        ips_protocols_new_counts = defaultdict(int)
-        new_function_code_dict = defaultdict(list)
-        for ips_and_code in new_func_codes:
-            if ips_and_code in covered_this_run:
-                continue
-            if suppression.already_suppressed(ips_and_code, now=now):
-                continue
-            ips, protocol, code = ips_and_code.split(":")
-            ips_protocols_new_counts[ips + ":" + protocol] += 1
-            new_function_code_dict[ips + ":" + protocol].append(code)
-        for ips_protocol_new, count in ips_protocols_new_counts.items():
-            # TODO: Heuristic for detecting enumeration attack. Needs fine-tuning - use std dev model?
-            if count >= 10:
-                ips, protocol = ips_protocol_new.split(":")
-                func_codes = new_function_code_dict[ips_protocol_new]
-                timestamp_key = ips_protocol_new + ":" + func_codes[0]
-                enumeration_alert = build_ecs_alert(
-                    action="possible function code enumeration",
-                    original=f"Possible Function Code Enumeration over {protocol} on {ips}: {func_codes}",
-                    riskscore=5.0,
-                    category=["network"],
-                    kind="alert",
-                    timestamp=datetime_parser(
-                        f"{func_codes_dataset.loc[func_codes_dataset[timestamp_key]!=0].index[0]}"
-                    ),
-                    event_extra={"time": end},
-                    source={"ip": ips.split("_")[0]},
-                    network={
-                        "source": ips.split("_")[0],
-                        "destination": ips.split("_")[1],
-                    },
-                    **{protocol: {"function_codes": func_codes}},
-                )
-                alerts.append(enumeration_alert)
-                for code in func_codes:
-                    key = ips_protocol_new + ":" + code
-                    covered_this_run.add(key)
-                    suppression.record(key, now=now)
-
-        # Build alerts on new function codes for src/dst pairs
+        _dos_alerts(run, func_codes_dataset, self.hours)
+        _enumeration_alerts(run, func_codes_dataset, new_func_codes)
         self._log.debug(f"New func codes analysis {new_func_codes}")
-        if new_func_codes:
-            for ips_and_code in new_func_codes:
-                if ips_and_code in covered_this_run:
-                    continue
-                if suppression.already_suppressed(ips_and_code, now=now):
-                    continue
-                ips, protocol, code = ips_and_code.split(":")
-                new_codes_alert = build_ecs_alert(
-                    action="new function code",
-                    original=f"New Function Codes {protocol}:{code} on {ips}",
-                    riskscore=5.0,
-                    category=["network"],
-                    kind="alert",
-                    timestamp=datetime_parser(
-                        f"{func_codes_dataset.loc[func_codes_dataset[ips_and_code]!=0].index[0]}"
-                    ),
-                    event_extra={"time": end},
-                    source={"ip": ips.split("_")[0]},
-                    network={
-                        "source": ips.split("_")[0],
-                        "destination": ips.split("_")[1],
-                    },
-                    **{protocol: {"function_code": code}},
-                )
-                alerts.append(new_codes_alert)
-                covered_this_run.add(ips_and_code)
-                suppression.record(ips_and_code, now=now)
-
-        # Build alerts on existing function codes increasing in rate for src/dst pairs (2+ std dev)
+        _new_code_alerts(run, func_codes_dataset, new_func_codes)
         self._log.debug("Calculating increased Function Rate alerts")
-        if not anomaly_func_code_results.empty:
-            for ips_and_code in anomaly_func_code_results.columns:
-                filtered_df = anomaly_func_code_results[
-                    anomaly_func_code_results[ips_and_code] != 0
-                ]
-                if ips_and_code in covered_this_run:
-                    continue
-                if suppression.already_suppressed(ips_and_code, now=now):
-                    continue
-                ips, protocol, code = ips_and_code.split(":")
-                timestamp = datetime_parser(f"{filtered_df.index[0]}")
-                increased_rate_alert = build_ecs_alert(
-                    action="increased function code rate",
-                    original=f"Increased rate of {protocol}:{code} on {ips} starting at {timestamp}",
-                    riskscore=5.0,
-                    category=["network"],
-                    kind="alert",
-                    timestamp=timestamp,
-                    event_extra={"time": end},
-                    source={"ip": ips.split("_")[0]},
-                    network={
-                        "source": ips.split("_")[0],
-                        "destination": ips.split("_")[1],
-                    },
-                    **{protocol: {"function_code": code}},
-                )
-                alerts.append(increased_rate_alert)
-                covered_this_run.add(ips_and_code)
-                suppression.record(ips_and_code, now=now)
+        _rate_alerts(run, anomaly_func_code_results)
 
-        self.run_alerts = alerts
-        return alerts
+        self.run_alerts = run.alerts
+        return run.alerts
 
     def get_fit_results(self):
         """

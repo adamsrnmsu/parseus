@@ -1,0 +1,1429 @@
+{
+ "auth": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "possible auth credential enumeration on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device burst has potential brute-force authentication enumeration (11 failures)",
+    "riskscore": 3.0
+   },
+   "host": {
+    "authentication_failures_avg_resubmit": 1.0,
+    "authentication_failures_count": 11,
+    "authentication_failures_info": [
+     [
+      "login",
+      "failure",
+      "bad password 0"
+     ],
+     [
+      "login",
+      "failure",
+      "bad password 1"
+     ]
+    ],
+    "current_pull": "2024-01-02 00:00:00+00:00"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "possible auth credential enumeration on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device burst has potential brute-force authentication enumeration (13 failures)",
+    "riskscore": 3.0
+   },
+   "host": {
+    "authentication_failures_avg_resubmit": 0.07692307692307693,
+    "authentication_failures_count": 13,
+    "authentication_failures_info": [
+     [
+      "login",
+      "failure",
+      "bad password 0"
+     ],
+     [
+      "login",
+      "failure",
+      "bad password 1"
+     ]
+    ],
+    "current_pull": "2024-01-02 00:00:00+00:00"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "baseline",
+    "category": [
+     "host"
+    ],
+    "kind": "state",
+    "original": "Device burst has event logs: {'log_a': [{'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:01'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:02'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:03'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:04'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:05'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:06'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:07'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:08'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:09'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:10'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:11'}], 'log_b': [{'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:01'}]}",
+    "riskscore": 0.0
+   },
+   "host": {
+    "events": [
+     [
+      "log_a",
+      [
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:01",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:02",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:03",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:04",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:05",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:06",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:07",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:08",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:09",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:10",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:11",
+        "message": "bad password 1",
+        "outcome": "failure"
+       }
+      ]
+     ],
+     [
+      "log_b",
+      [
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:01",
+        "message": "bad password 1",
+        "outcome": "failure"
+       }
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "baseline",
+    "category": [
+     "host"
+    ],
+    "kind": "state",
+    "original": "Device slow has event logs: {'log_a': [{'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:30'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:01:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:01:30'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:02:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:02:30'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:03:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:03:30'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:04:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:04:30'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:05:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:05:30'}]}",
+    "riskscore": 0.0
+   },
+   "host": {
+    "events": [
+     [
+      "log_a",
+      [
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:01:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:01:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:02:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:02:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:03:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:03:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:04:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:04:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:05:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:05:30",
+        "message": "bad password 1",
+        "outcome": "failure"
+       }
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "baseline",
+    "category": [
+     "host"
+    ],
+    "kind": "state",
+    "original": "Device few has event logs: {'log_a': [{'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:00'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:01'}, {'outcome': 'failure', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:02'}, {'outcome': 'failure', 'action': 'auth', 'message': 'no time'}]}",
+    "riskscore": 0.0
+   },
+   "host": {
+    "events": [
+     [
+      "log_a",
+      [
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:00",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:01",
+        "message": "bad password 1",
+        "outcome": "failure"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:02",
+        "message": "bad password 0",
+        "outcome": "failure"
+       },
+       {
+        "action": "auth",
+        "message": "no time",
+        "outcome": "failure"
+       }
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "baseline",
+    "category": [
+     "host"
+    ],
+    "kind": "state",
+    "original": "Device ok has event logs: {'log_a': [{'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:00'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:01'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:02'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:03'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:04'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:05'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:06'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:07'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:08'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:09'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 0', 'created': '2024-01-01T12:00:10'}, {'outcome': 'success', 'category': ['authentication'], 'action': 'login', 'message': 'bad password 1', 'created': '2024-01-01T12:00:11'}]}",
+    "riskscore": 0.0
+   },
+   "host": {
+    "events": [
+     [
+      "log_a",
+      [
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:00",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:01",
+        "message": "bad password 1",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:02",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:03",
+        "message": "bad password 1",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:04",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:05",
+        "message": "bad password 1",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:06",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:07",
+        "message": "bad password 1",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:08",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:09",
+        "message": "bad password 1",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:10",
+        "message": "bad password 0",
+        "outcome": "success"
+       },
+       {
+        "action": "login",
+        "category": [
+         "authentication"
+        ],
+        "created": "2024-01-01T12:00:11",
+        "message": "bad password 1",
+        "outcome": "success"
+       }
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "baseline",
+    "category": [
+     "host"
+    ],
+    "kind": "state",
+    "original": "Device none has event logs: {}",
+    "riskscore": 0.0
+   },
+   "host": {
+    "events": []
+   }
+  }
+ ],
+ "device": [
+  {
+   "@timestamp": "2023-11-14 22:46:40+00:00",
+   "event": {
+    "action": "new-device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "New Device: new",
+    "riskscore": 1.0
+   }
+  },
+  {
+   "@timestamp": "2023-11-14 22:15:00+00:00",
+   "event": {
+    "action": "missing-device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Missing Device: gone",
+    "riskscore": 1.0
+   }
+  }
+ ],
+ "file": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "file changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed files: {'c'} were added, {'a'} were removed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "files_added": [
+     "c"
+    ],
+    "files_removed": [
+     "a"
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  }
+ ],
+ "firmware": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "firmware updated on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has firmware updates: versions ['2.0']",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "firmware_updates": [
+     {
+      "version": "2.0"
+     },
+     {
+      "hash": {
+       "sha1": "abc"
+      }
+     }
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "firmware updated on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has firmware updates: versions ['2.0', 'abc']",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "firmware_updates": [
+     {
+      "version": "2.0"
+     },
+     {
+      "hash": {
+       "sha1": "abc"
+      }
+     }
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  }
+ ],
+ "func_transform": {
+  "empty": true,
+  "index": [
+   "2024-01-01T00:00:00.000000Z",
+   "2024-01-01T01:00:00.000000Z"
+  ],
+  "table": {
+   "10.0.0.1_10.0.0.2:dnp3:Select": [
+    0.0,
+    5.0
+   ],
+   "10.0.0.1_10.0.0.2:modbus:Read": [
+    3.0,
+    0.0
+   ],
+   "10.0.0.1_10.0.0.2:modbus:Write": [
+    1.0,
+    0.0
+   ]
+  }
+ },
+ "io": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "I/O modules changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed I/O modules: ['in: m4'] were added, ['in: m3'] were removed, [('in: m1', {'values_changed': {\"root['a']\": {'new_value': 2, 'old_value': 1}}})] were changed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "io_modules_added": [
+     "in: m4",
+     "out: o2"
+    ],
+    "io_modules_changed": [
+     [
+      "in: m1",
+      {
+       "values_changed": {
+        "root['a']": {
+         "new_value": 2,
+         "old_value": 1
+        }
+       }
+      }
+     ]
+    ],
+    "io_modules_removed": [
+     "in: m3"
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "I/O modules changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed I/O modules: ['in: m4', 'out: o2'] were added, ['in: m3'] were removed, [('in: m1', {'values_changed': {\"root['a']\": {'new_value': 2, 'old_value': 1}}})] were changed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "io_modules_added": [
+     "in: m4",
+     "out: o2"
+    ],
+    "io_modules_changed": [
+     [
+      "in: m1",
+      {
+       "values_changed": {
+        "root['a']": {
+         "new_value": 2,
+         "old_value": 1
+        }
+       }
+      }
+     ]
+    ],
+    "io_modules_removed": [
+     "in: m3"
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  }
+ ],
+ "logic": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "logic changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has logic changes: {'values_changed': {\"root['name']\": {'new_value': 'b', 'old_value': 'a'}}}",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_logic": {
+     "name": "b",
+     "prog": [
+      2,
+      1
+     ]
+    },
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "previous_logic": {
+     "name": "a",
+     "prog": [
+      1,
+      2
+     ]
+    },
+    "previous_pull": "2024-01-01 00:00:00+00:00"
+   }
+  }
+ ],
+ "ot_dos": [
+  {
+   "@timestamp": "2024-01-01 01:00:00+00:00",
+   "event": {
+    "action": "possible denial-of-service",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "Possible Denial-Of-Service from modbus:Cold Restart in 1.1.1.1_2.2.2.2 starting at 2024-01-01 01:00:00+00:00",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "modbus": {
+    "function_code": "Cold Restart"
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  },
+  {
+   "@timestamp": "2024-01-01 00:00:00+00:00",
+   "dnp3": {
+    "function_code": "warm restart"
+   },
+   "event": {
+    "action": "possible denial-of-service",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "Possible Denial-Of-Service from dnp3:warm restart in 1.1.1.1_2.2.2.2 starting at 2024-01-01 00:00:00+00:00",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  }
+ ],
+ "ot_empty": [],
+ "ot_enum": [
+  {
+   "@timestamp": "2024-01-01 00:00:00+00:00",
+   "dnp3": {
+    "function_code": "d1"
+   },
+   "event": {
+    "action": "new function code",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "New Function Codes dnp3:d1 on 1.1.1.1_2.2.2.2",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  },
+  {
+   "@timestamp": "2024-01-01 00:00:00+00:00",
+   "event": {
+    "action": "new function code",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "New Function Codes modbus:e1 on 3.3.3.3_4.4.4.4",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "modbus": {
+    "function_code": "e1"
+   },
+   "network": {
+    "destination": "4.4.4.4",
+    "source": "3.3.3.3"
+   },
+   "source": {
+    "ip": "3.3.3.3"
+   }
+  },
+  {
+   "@timestamp": "2024-01-01 00:00:00+00:00",
+   "event": {
+    "action": "possible function code enumeration",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "enumeration c0 c1 c10 c2 c3 c4 c5 c6 c7 c8 c9",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "modbus": {
+    "function_codes": [
+     "c0",
+     "c1",
+     "c10",
+     "c2",
+     "c3",
+     "c4",
+     "c5",
+     "c6",
+     "c7",
+     "c8",
+     "c9"
+    ]
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  }
+ ],
+ "ot_rate": [
+  {
+   "@timestamp": "2024-01-01 00:00:00+00:00",
+   "event": {
+    "action": "increased function code rate",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "Increased rate of modbus:Read on 1.1.1.1_2.2.2.2 starting at 2024-01-01 00:00:00+00:00",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "modbus": {
+    "function_code": "Read"
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  },
+  {
+   "@timestamp": "2024-01-01 01:00:00+00:00",
+   "event": {
+    "action": "increased function code rate",
+    "category": [
+     "network"
+    ],
+    "kind": "alert",
+    "original": "Increased rate of modbus:Write on 1.1.1.1_2.2.2.2 starting at 2024-01-01 01:00:00+00:00",
+    "riskscore": 5.0,
+    "time": "2024-01-01 05:00:00"
+   },
+   "modbus": {
+    "function_code": "Write"
+   },
+   "network": {
+    "destination": "2.2.2.2",
+    "source": "1.1.1.1"
+   },
+   "source": {
+    "ip": "1.1.1.1"
+   }
+  }
+ ],
+ "process": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "process changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed processes: ['bash'] were added, ['sshd'] were removed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "processes_added": [
+     "bash"
+    ],
+    "processes_removed": [
+     "sshd"
+    ]
+   }
+  }
+ ],
+ "scpi_alerts": {
+  "all": [
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "values outside range of training data",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected values outside range of training data: {'min': 0.0, 'max': 9.0, 'channels': {7}, 'value': ['Q']}",
+     "riskscore": 5.0
+    },
+    "handled": false
+   },
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "unfamliar channel used",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected unfamliar channel used: [7]",
+     "riskscore": 5.0
+    },
+    "handled": false
+   },
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "unfamliar value found",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected unfamliar value found: ['Q']",
+     "riskscore": 5.0
+    },
+    "handled": false
+   }
+  ],
+  "channel": [
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "unfamliar channel used",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected unfamliar channel used: [9]",
+     "riskscore": 5.0
+    },
+    "handled": false
+   }
+  ],
+  "in_range": [],
+  "label": [
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "unfamliar label found",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected unfamliar label found: ['B']",
+     "riskscore": 5.0
+    },
+    "handled": false
+   }
+  ],
+  "range": [
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "values outside range of training data",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected values outside range of training data: {'min': 0.0, 'max': 9.0}",
+     "riskscore": 5.0
+    },
+    "handled": false
+   }
+  ],
+  "value": [
+   {
+    "@timestamp": "2024-01-01 00:00:00",
+    "event": {
+     "action": "unfamliar value found",
+     "category": [
+      "network"
+     ],
+     "command": "CMD",
+     "kind": "alert",
+     "original": "Detected unfamliar value found: ['OFF', 'X']",
+     "riskscore": 5.0
+    },
+    "handled": false
+   }
+  ]
+ },
+ "scpi_compare": [
+  {
+   "@timestamp": "2024-01-02 00:00:00",
+   "event": {
+    "action": "Value Removed",
+    "category": [
+     "network"
+    ],
+    "ground_truth_date": "2024-01-01 00:00:00",
+    "kind": "alert",
+    "original": "Detected value removed: A",
+    "riskscore": 5.0
+   },
+   "handled": false
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00",
+   "event": {
+    "action": "Value Removed",
+    "category": [
+     "network"
+    ],
+    "ground_truth_date": "2024-01-01 00:00:00",
+    "kind": "alert",
+    "original": "Detected value removed: B",
+    "riskscore": 5.0
+   },
+   "handled": false
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00",
+   "event": {
+    "action": "Value Added",
+    "category": [
+     "network"
+    ],
+    "ground_truth_date": "2024-01-01 00:00:00",
+    "kind": "alert",
+    "original": "Detected added value: B",
+    "riskscore": 5.0
+   },
+   "handled": false
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00",
+   "event": {
+    "action": "Value Added",
+    "category": [
+     "network"
+    ],
+    "ground_truth_date": "2024-01-01 00:00:00",
+    "kind": "alert",
+    "original": "Detected added value: C",
+    "riskscore": 5.0
+   },
+   "handled": false
+  }
+ ],
+ "scpi_parse": {
+  "parsed": {
+   "*RST": [
+    ""
+   ],
+   "CAL": [
+    "1"
+   ],
+   "CHAN": [
+    "12",
+    "LABEL"
+   ],
+   "MEAS": [
+    {
+     "channel": 3,
+     "sub_command_or_value": "(@3)"
+    },
+    {
+     "channel": 1,
+     "sub_command_or_value": "(@1)"
+    }
+   ],
+   "OUTP": [
+    "ON",
+    "OFF"
+   ],
+   "SENS:CH": [
+    {
+     "channel": 2,
+     "sub_command_or_value": "(@2)"
+    },
+    "ON"
+   ],
+   "VOLT": [
+    "5",
+    "7.5"
+   ]
+  },
+  "ranges": {
+   "*RST": "",
+   "CAL": {
+    "max": 1.0,
+    "min": 1.0
+   },
+   "CHAN": [
+    "12",
+    "LABEL"
+   ],
+   "MEAS": {
+    "channels": [
+     1,
+     3
+    ],
+    "values": [
+     "(@3)",
+     "(@1)"
+    ]
+   },
+   "OUTP": [
+    "OFF",
+    "ON"
+   ],
+   "SENS:CH": {
+    "channels": [
+     2
+    ],
+    "values": [
+     "(@2)",
+     "ON"
+    ]
+   },
+   "VOLT": {
+    "max": 7.5,
+    "min": 5.0
+   }
+  }
+ },
+ "scpi_ranges": {
+  "dict_numeric": {
+   "channels": [
+    1,
+    5
+   ],
+   "max": 4.5,
+   "min": 3.0
+  },
+  "dict_text": {
+   "channels": [
+    2
+   ],
+   "values": [
+    "ON"
+   ]
+  },
+  "dict_text_first": {
+   "channels": [
+    2,
+    3
+   ],
+   "values": [
+    "ON",
+    1.0
+   ]
+  },
+  "mixed": {
+   "channels": [
+    4
+   ],
+   "values": [
+    "OFF",
+    "ON"
+   ]
+  },
+  "mixed_cmd": {
+   "X": {
+    "channels": [
+     4
+    ],
+    "values": [
+     "OFF",
+     "ON"
+    ]
+   }
+  }
+ },
+ "service": [
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "service changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed ports for protocol tcp: changed from ports [80, 22] to ports [80, 443]",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "device": "d1",
+    "ports_new": [
+     80,
+     443
+    ],
+    "ports_old": [
+     80,
+     22
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "protocol": "tcp"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "service changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed open/closed status for protocol tcp on the following ports: changed from status [('open', 80), ('open', 22)] to status [('closed', 80), ('open', 443)]",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "device": "d1",
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "protocol": "tcp",
+    "status_new": [
+     [
+      "closed",
+      80
+     ],
+     [
+      "open",
+      443
+     ]
+    ],
+    "status_old": [
+     [
+      "open",
+      80
+     ],
+     [
+      "open",
+      22
+     ]
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "service changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d1 has changed services: [{'protocol': 'tcp', 'port': 80, 'status': 'closed'}, {'protocol': 'tcp', 'port': 443, 'status': 'open'}] were added, [{'protocol': 'tcp', 'port': 80, 'status': 'open'}, {'protocol': 'tcp', 'port': 22, 'status': 'open'}] were removed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "service_removed": [
+     {
+      "port": 80,
+      "protocol": "tcp",
+      "status": "open"
+     },
+     {
+      "port": 22,
+      "protocol": "tcp",
+      "status": "open"
+     }
+    ],
+    "services_added": [
+     {
+      "port": 80,
+      "protocol": "tcp",
+      "status": "closed"
+     },
+     {
+      "port": 443,
+      "protocol": "tcp",
+      "status": "open"
+     }
+    ]
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "service changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d4 has changed ports for protocol tcp: changed from ports [1] to ports [2]",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "device": "d4",
+    "ports_new": [
+     2
+    ],
+    "ports_old": [
+     1
+    ],
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "protocol": "tcp"
+   }
+  },
+  {
+   "@timestamp": "2024-01-02 00:00:00+00:00",
+   "event": {
+    "action": "service changed on device",
+    "category": [
+     "host"
+    ],
+    "kind": "alert",
+    "original": "Device d4 has changed services: [{'protocol': 'tcp', 'port': 2, 'status': 'open'}] were added, [{'protocol': 'tcp', 'port': 1, 'status': 'open'}] were removed",
+    "riskscore": 3.0
+   },
+   "host": {
+    "current_pull": "2024-01-02 00:00:00+00:00",
+    "previous_pull": "2024-01-01 00:00:00+00:00",
+    "service_removed": [
+     {
+      "port": 1,
+      "protocol": "tcp",
+      "status": "open"
+     }
+    ],
+    "services_added": [
+     {
+      "port": 2,
+      "protocol": "tcp",
+      "status": "open"
+     }
+    ]
+   }
+  }
+ ]
+}

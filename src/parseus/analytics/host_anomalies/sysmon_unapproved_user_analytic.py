@@ -6,7 +6,6 @@ Looks for User references that are not in the whitelist.
 from parseus.analytics.base import Analytic
 from parseus.analytics.core import build_ecs_alert
 from parseus.analytics.core.suppression import SuppressionWindow
-from parseus.analytics.core.suppression import window_now as _window_now
 from parseus.analytics.core.operator_rules import OperatorRuleMixin
 from parseus.analytics.capabilities import (
     ElasticsearchSource,
@@ -15,8 +14,8 @@ from parseus.analytics.capabilities import (
     Unsupervised,
 )
 from parseus.analytics.host_anomalies.rules import (
+    alert_rule_context,
     describe_allowed_windows,
-    evaluate_allow_rules,
 )
 from parseus.analytics.host_anomalies.sysmon_helpers import (
     extract_timestamp_from_aggregation,
@@ -115,40 +114,31 @@ def make_alerts(
 ):
     "Use allow-list and schedule rules to return user alerts."
     alerts = []
-    known_good_users = set(known_good_users or [])
+    known_good = set(known_good_users or [])
     for user_dict in user_dicts:
         user = user_dict["user"]
-        allowed, rule, reason = evaluate_allow_rules(
+        context = alert_rule_context(
             user,
             user_dict["@timestamp"],
             user_rules,
-            value_keys=("users",),
-            default_timezone=default_timezone,
+            known_good,
+            ("users",),
+            default_timezone,
+            window,
+            now,
         )
-
-        if allowed is True:
+        if context is None:
             continue
-        if allowed is None and user in known_good_users:
-            continue
-
-        # Per-user suppression window keyed on the run clock: default "0s" always
-        # emits (unchanged); a configured window re-alerts a given user at most
-        # once per window (e.g. "24h" = one login alert per user per day).
-        if window is not None and not window.should_emit(user, now=_window_now(now)):
-            continue
-
-        if reason == "outside_allowed_window":
-            rule_name = rule.get("name", "unnamed rule") if rule else "unnamed rule"
+        rule, rule_fields = context
+        if rule is not None:
             original = (
                 f"User {user} logged in outside approved access window for "
-                f"rule '{rule_name}'. Allowed windows: {describe_allowed_windows(rule)}"
+                f"rule '{rule_fields['name']}'. Allowed windows: {describe_allowed_windows(rule)}"
             )
             action = "User Outside Approved Window"
-            rule_fields = {"name": rule_name, "reason": reason}
         else:
             original = f"NEW User {user}"
             action = "NEW User"
-            rule_fields = {"reason": "not_in_whitelist"}
 
         alerts.append(
             build_ecs_alert(

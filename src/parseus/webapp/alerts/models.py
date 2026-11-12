@@ -13,6 +13,36 @@ SYSMON_ANALYTIC_CLASS_TO_RULE_TYPE = {
 }
 
 
+def _window_error(message: str) -> ValidationError:
+    return ValidationError({"allowed_windows": message})
+
+
+def _validate_window(number: int, window: object) -> None:
+    """Raise ValidationError if one allowed window (1-based ``number``) is bad."""
+    if not isinstance(window, dict):
+        raise _window_error(f"Window {number} must be an object.")
+
+    days = window.get("days", [])
+    if not isinstance(days, list):
+        raise _window_error(f"Window {number} days must be a list.")
+    invalid_days = [day for day in days if str(day).lower() not in DAY_CHOICES]
+    if invalid_days:
+        raise _window_error(
+            f"Window {number} has invalid day(s): "
+            f"{', '.join(map(str, invalid_days))}. Use {', '.join(DAY_CHOICES)}."
+        )
+
+    for field in ("start", "end"):
+        if field not in window:
+            raise _window_error(f"Window {number} missing {field}.")
+        try:
+            time.fromisoformat(str(window[field]))
+        except ValueError as err:
+            raise _window_error(
+                f"Window {number} {field} must use HH:MM or HH:MM:SS format."
+            ) from err
+
+
 class SysmonRule(models.Model):
     """Allow-list and schedule rule for Sysmon host anomaly analytics."""
 
@@ -72,43 +102,7 @@ class SysmonRule(models.Model):
             )
 
         for index, window in enumerate(self.allowed_windows):
-            if not isinstance(window, dict):
-                raise ValidationError(
-                    {"allowed_windows": f"Window {index + 1} must be an object."}
-                )
-
-            days = window.get("days", [])
-            if not isinstance(days, list):
-                raise ValidationError(
-                    {"allowed_windows": f"Window {index + 1} days must be a list."}
-                )
-            invalid_days = [day for day in days if str(day).lower() not in DAY_CHOICES]
-            if invalid_days:
-                raise ValidationError(
-                    {
-                        "allowed_windows": (
-                            f"Window {index + 1} has invalid day(s): "
-                            f"{', '.join(invalid_days)}. Use {', '.join(DAY_CHOICES)}."
-                        )
-                    }
-                )
-
-            for field in ("start", "end"):
-                if field not in window:
-                    raise ValidationError(
-                        {"allowed_windows": f"Window {index + 1} missing {field}."}
-                    )
-                try:
-                    time.fromisoformat(str(window[field]))
-                except ValueError as err:
-                    raise ValidationError(
-                        {
-                            "allowed_windows": (
-                                f"Window {index + 1} {field} must use HH:MM or "
-                                "HH:MM:SS format."
-                            )
-                        }
-                    ) from err
+            _validate_window(index + 1, window)
 
     def to_analytic_rule(self) -> dict[str, object]:
         """Return the JSON-serializable rule shape consumed by analytics."""

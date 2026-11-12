@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from parseus.analytics.core.suppression import window_now
+
 DAY_ALIASES = {
     "mon": 0,
     "monday": 0,
@@ -151,3 +153,35 @@ def describe_allowed_windows(rule: dict | None) -> str:
             f"{days} {window.get('start', '00:00')}-{window.get('end', '23:59:59')}"
         )
     return "; ".join(descriptions)
+
+
+def alert_rule_context(
+    value,
+    timestamp,
+    rules: list[dict] | None,
+    known_good: set,
+    value_keys: tuple[str, ...],
+    default_timezone="UTC",
+    window=None,
+    now=None,
+) -> tuple[dict | None, dict] | None:
+    """Decide whether an allow-list subject warrants an alert.
+
+    Returns None when the value is allowed (by a rule or the known-good set) or
+    suppressed by ``window``. Otherwise returns ``(rule, rule_fields)``: ``rule``
+    is the denying rule (None when the value simply is not on the allow-list) and
+    ``rule_fields`` is the ``rule`` section of the alert.
+    """
+    allowed, rule, reason = evaluate_allow_rules(
+        value, timestamp, rules, value_keys=value_keys, default_timezone=default_timezone
+    )
+    if allowed is True or (allowed is None and value in known_good):
+        return None
+    # Suppression is keyed on the run clock: with the default "0s" it always
+    # emits; a configured window re-alerts a given value at most once per window.
+    if window is not None and not window.should_emit(value, now=window_now(now)):
+        return None
+    if reason == "outside_allowed_window":
+        name = (rule or {}).get("name", "unnamed rule")
+        return rule, {"name": name, "reason": reason}
+    return rule, {"reason": "not_in_whitelist"}

@@ -18,6 +18,56 @@ from parseus.preprocessors.peat_dir import (
 )
 from parseus.preprocessors.transform import compose
 
+
+def _diff_module_type(module_type, current, previous, added, removed, changed):
+    """Append this category's module differences to the shared diff lists.
+
+    ``current``/``previous`` map module name -> configuration.
+    """
+    for name, config in current.items():
+        label = module_type + ": " + name
+        if name not in previous:
+            added.append(label)
+        elif config != previous[name]:
+            diff = DeepDiff(previous[name], config, ignore_order=True)
+            changed.append((label, json.loads(diff.to_json())))
+    removed.extend(module_type + ": " + name for name in previous if name not in current)
+
+
+def _io_alerts(device, current, previous):
+    """Alerts for one device; diffs accumulate across module categories.
+
+    ``current``/``previous`` are ``(timestamp, {category: {module: config}})``.
+    """
+    alerts = []
+    added, removed, changed = [], [], []
+    for module_type, modules in current[1].items():
+        # Analytic ignores changes to entire categories of modules for now (in/out)
+        if module_type not in previous[1]:
+            continue
+        _diff_module_type(
+            module_type, modules, previous[1][module_type], added, removed, changed
+        )
+        if added or removed or changed:
+            alerts.append(
+                build_ecs_alert(
+                    "I/O modules changed on device",
+                    f"Device {device} has changed I/O modules: {added} were added, {removed} were removed, {changed} were changed",
+                    3.0,
+                    category=["host"],
+                    timestamp=datetime_parser(current[0]),
+                    host={
+                        "io_modules_added": added,
+                        "io_modules_removed": removed,
+                        "io_modules_changed": changed,
+                        "current_pull": datetime_parser(current[0]),
+                        "previous_pull": datetime_parser(previous[0]),
+                    },
+                )
+            )
+    return alerts
+
+
 @register_analytic(
     key="PeatIOChangeAnalytic",
     family="ot_internals",
@@ -73,76 +123,12 @@ class PeatIOChangeAnalytic(Analytic):
         self.training_device_io_ = io
 
     def _run(self, start, end, peat_docs, state, **other_docs) -> list:
-        device_io = peat_docs
-
         alerts = []
-
-        for device in device_io:
-            if device not in self.training_device_io_:
-                continue
-            # Compare io module names, then labels/handles if present in both sets
-            diff_io_added = []
-            diff_io_removed = []
-            io_diffs = []
-
-            for module_type in device_io[device][1]:
-                # Analytic ignores changes to entire categories of modules for now (in/out)
-                if module_type not in self.training_device_io_[device][1]:
-                    continue
-
-                for io_module_name in device_io[device][1][module_type]:
-                    if (
-                        io_module_name
-                        not in self.training_device_io_[device][1][module_type]
-                    ):
-                        diff_io_added.append(module_type + ": " + io_module_name)
-                    else:
-                        if (
-                            device_io[device][1][module_type][io_module_name]
-                            != self.training_device_io_[device][1][module_type][
-                                io_module_name
-                            ]
-                        ):
-                            io_diffs.append(
-                                (
-                                    module_type + ": " + io_module_name,
-                                    json.loads(
-                                        DeepDiff(
-                                            self.training_device_io_[device][1][
-                                                module_type
-                                            ][io_module_name],
-                                            device_io[device][1][module_type][
-                                                io_module_name
-                                            ],
-                                            ignore_order=True,
-                                        ).to_json()
-                                    ),
-                                )
-                            )
-
-                for io_module_name in self.training_device_io_[device][1][module_type]:
-                    if io_module_name not in device_io[device][1][module_type]:
-                        diff_io_removed.append(module_type + ": " + io_module_name)
-
-                if diff_io_added or diff_io_removed or io_diffs:
-                    alerts.append(
-                        build_ecs_alert(
-                            "I/O modules changed on device",
-                            f"Device {device} has changed I/O modules: {diff_io_added} were added, {diff_io_removed} were removed, {io_diffs} were changed",
-                            3.0,
-                            category=["host"],
-                            timestamp=datetime_parser(device_io[device][0]),
-                            host={
-                                "io_modules_added": diff_io_added,
-                                "io_modules_removed": diff_io_removed,
-                                "io_modules_changed": io_diffs,
-                                "current_pull": datetime_parser(device_io[device][0]),
-                                "previous_pull": datetime_parser(
-                                    self.training_device_io_[device][0]
-                                ),
-                            },
-                        )
-                    )
+        for device, current in peat_docs.items():
+            if device in self.training_device_io_:
+                alerts.extend(
+                    _io_alerts(device, current, self.training_device_io_[device])
+                )
         return alerts
 
     def get_fit_results(self):

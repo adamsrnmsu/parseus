@@ -3,6 +3,7 @@ import logging
 
 from django.db import transaction
 from django.http import (
+    Http404,
     HttpResponse,
     HttpResponseBadRequest,
     HttpResponseNotFound,
@@ -37,37 +38,37 @@ def analytics_index(request):
     return HttpResponse(template.render(request=request))
 
 
-def analytics(request, analytic_types="All"):
-    analytic_types_list = analytic_types.split(",")
+# analytic_types value -> (requires_fit, is_peat, template); first match wins.
+_ANALYTIC_LISTINGS = {
+    "NetworkSupervised": (True, False, "analytics/supervised_analytics.html"),
+    "NetworkUnsupervised": (False, False, "analytics/unsupervised_analytics.html"),
+    "PeatSupervised": (True, True, "analytics/supervised_analytics.html"),
+    "PeatUnsupervised": (False, True, "analytics/unsupervised_analytics.html"),
+}
+
+
+def _select_analytics(active_analytics, analytic_types_list):
+    """Return ``(analytics, template_name)`` for the requested analytic types.
+
+    :raises Http404: When none of the types is one of the four listed kinds.
+    """
+    for kind, (requires_fit, is_peat, template_name) in _ANALYTIC_LISTINGS.items():
+        if kind in analytic_types_list:
+            return [
+                a
+                for a in active_analytics
+                if bool(a.requires_fit) == requires_fit
+                and (a.family == "ot_internals") == is_peat
+            ], template_name
+    raise Http404(f"Unknown analytic type: {','.join(analytic_types_list)}")
+
+
+def analytics(request, analytic_types):
     active_analytics = list(Analytic.objects.filter(is_active=True))
-    if "NetworkSupervised" in analytic_types_list:
-        analytics_qs = [
-            a
-            for a in active_analytics
-            if a.requires_fit and a.family != "ot_internals"
-        ]
-        template = loader.get_template("analytics/supervised_analytics.html")
-    elif "NetworkUnsupervised" in analytic_types_list:
-        analytics_qs = [
-            a
-            for a in active_analytics
-            if not a.requires_fit and a.family != "ot_internals"
-        ]
-        template = loader.get_template("analytics/unsupervised_analytics.html")
-    elif "PeatSupervised" in analytic_types_list:
-        analytics_qs = [
-            a for a in active_analytics if a.requires_fit and a.family == "ot_internals"
-        ]
-        template = loader.get_template("analytics/supervised_analytics.html")
-    elif "PeatUnsupervised" in analytic_types_list:
-        analytics_qs = [
-            a
-            for a in active_analytics
-            if not a.requires_fit and a.family == "ot_internals"
-        ]
-        template = loader.get_template("analytics/unsupervised_analytics.html")
-    else:
-        analytics_qs = active_analytics
+    analytics_qs, template_name = _select_analytics(
+        active_analytics, analytic_types.split(",")
+    )
+    template = loader.get_template(template_name)
     families = [{"family": fam} for fam in sorted({a.family for a in analytics_qs})]
     # name/family are resolved from the registry spec, not DB columns, so
     # sorting happens in Python rather than via queryset.order_by(...).
@@ -78,10 +79,8 @@ def analytics(request, analytic_types="All"):
         "data": [],
         "analytic_type": analytic_types,
         "peat_available": get_data_source_provider(PEAT_SOURCE_TYPE) is not None,
-
     }
     return HttpResponse(template.render(context, request))
-
 
 
 def _resolve_peat_index(index_name):
