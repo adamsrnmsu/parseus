@@ -39,7 +39,7 @@ def get_reg_state(index=None, start=None, end=None, dshost=None):
     # Convert packets to register operations (dict with src, dst, etc.)
     reg_ops = one_to_many(packets, transformer=packet_to_regops)
     # Convert register operations to register state (Pandas DF)
-    return load_regstate(reg_ops, logger)
+    return load_regstate(reg_ops, back_populate=True)
 
 
 def get_summary_from_reg_state(reg_state):
