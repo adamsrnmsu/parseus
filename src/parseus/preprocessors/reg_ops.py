@@ -68,6 +68,23 @@ def modbus_to_regop(packet):
     return regops
 
 
+def dnp3_to_regop(packet):
+    """Convert a Zeek ``dnp3_points`` document into a single regop (or none)."""
+    point = (packet.get("zeek") or {}).get("dnp3_points")
+    if not point or point.get("value") is None or point.get("index") is None:
+        return []
+    return [
+        (
+            make_zulu_time(datetime_parser(packet["@timestamp"])),
+            "dnp3",
+            packet["source"]["ip"],
+            packet["destination"]["ip"],
+            f"dnp3_{point['object_type']}_{point['index']}",
+            float(point["value"]),
+        )
+    ]
+
+
 def packet_to_regops(packet, **kwargs):
     """
     Takes a packet formatted like it came out of Zeek output (Modbus only)
@@ -77,6 +94,8 @@ def packet_to_regops(packet, **kwargs):
     :return: A list of regop(s) contained in this packet
     """
     if "zeek" in packet:
+        if "dnp3_points" in packet["zeek"]:
+            return dnp3_to_regop(packet)
         result = modbus_to_regop(packet)
     else:
         return []

@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+from itertools import chain
 
 import numpy as np
 import pandas as pd
@@ -8,7 +9,7 @@ import pandas as pd
 # new package? is this necessary?
 from more_itertools import windowed
 
-from parseus.datastore.query_api import get_modbus_registers
+from parseus.datastore.query_api import get_dnp3_points, get_modbus_registers
 from parseus.preprocessors.reg_annotations import create_annotated_reg
 from parseus.preprocessors.reg_ops import packet_to_regops
 from parseus.preprocessors.reg_state import load_regstate, sample_weights
@@ -35,7 +36,11 @@ def get_reg_state(index=None, start=None, end=None, dshost=None):
     Can raise several different errors that should be handled by the caller.
     """
     # Pull packets from elastic index
-    packets = get_modbus_registers(dshost, index, start=start, end=end)
+    # Modbus registers and DNP3 points (both written by the Zeek ingestor)
+    packets = chain(
+        get_modbus_registers(dshost, index, start=start, end=end),
+        get_dnp3_points(dshost, index, start=start, end=end),
+    )
     # Convert packets to register operations (dict with src, dst, etc.)
     reg_ops = one_to_many(packets, transformer=packet_to_regops)
     # Convert register operations to register state (Pandas DF)

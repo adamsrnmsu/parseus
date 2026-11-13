@@ -91,6 +91,20 @@ def get_modbus_registers(
     )
 
 
+def get_dnp3_points(ds_client, index, start=None, end=None, ip_filter="", logger=LOGGER):
+    """Return the DNP3 point-value documents written by the Zeek ingestor."""
+    return get_datastore_data(
+        ds_client,
+        index,
+        start,
+        end,
+        ip_filter,
+        logger=logger,
+        query=get_dnp3_points_query(),
+        return_fields=get_dnp3_return_fields(),
+    )
+
+
 def get_modbus_function_codes(
     ds_client,
     index,
@@ -193,6 +207,26 @@ def get_modbus_return_fields():
         "zeek.modbus_detailed.request_values",
         "zeek.modbus_detailed.address",
         "zeek.modbus.func",
+        "@timestamp",
+    ]
+
+
+def get_dnp3_points_query():
+    return {
+        "bool": {
+            "must": [
+                {"term": {"event.dataset": "dnp3_points"}},
+                {"exists": {"field": "zeek.dnp3_points.value"}},
+            ]
+        }
+    }
+
+
+def get_dnp3_return_fields():
+    return [
+        "source.ip",
+        "destination.ip",
+        "zeek.dnp3_points",
         "@timestamp",
     ]
 

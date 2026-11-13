@@ -1,0 +1,9 @@
+# Attach the Parseus DNP3 parser to TCP/20000 next to Zeek's stock DNP3 analyzer.
+import ParseusDNP3;
+
+protocol analyzer spicy::ParseusDNP3 over TCP:
+    parse originator with ParseusDNP3::Stream,
+    parse responder with ParseusDNP3::Stream,
+    port 20000/tcp;
+
+on ParseusDNP3::Rec::%done -> event ParseusDNP3::point($conn, $is_orig, self.fc, self.group, self.variation, self.index, self.value, self.flags);

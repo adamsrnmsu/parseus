@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -18,6 +19,7 @@ from manage_parseus_lib.docker.compose import (
     verify_required_ports,
 )
 from manage_parseus_lib.docker.images import verify_required_images
+from manage_parseus_lib.install.env_files import parse_env_file
 from manage_parseus_lib.install.certificates import uses_external_tls_certificates
 from manage_parseus_lib.install.paths import InstallPaths
 from manage_parseus_lib.errors import ManageParseusError
@@ -47,6 +49,18 @@ def build_stack_plan(install_paths: InstallPaths, integrations: List[str]) -> St
     )
 
 
+def verify_zeek_interface(install_paths: InstallPaths) -> None:
+    """The zeek service runs on the host network, so ZEEK_IFACE must exist on the host."""
+    env = parse_env_file(install_paths.env_dir / "ingestor.env")
+    iface = env.get("ZEEK_IFACE") or "eth0"  # entrypoint.sh default
+    names = [name for _, name in socket.if_nameindex()]
+    if iface not in names:
+        die(
+            f"ZEEK_IFACE={iface} does not exist on this host; set it in "
+            f"{install_paths.env_dir / 'ingestor.env'}. Interfaces: {', '.join(names)}"
+        )
+
+
 def verify_stack_plan(
     install_paths: InstallPaths,
     integrations: List[str],
@@ -65,6 +79,8 @@ def verify_stack_plan(
     else:
         verify_required_ports(plan.rendered)
     verify_required_bind_mounts(plan.rendered)
+    if "zeek" in integrations:
+        verify_zeek_interface(install_paths)
     if verify_images:
         verify_required_images(plan.required_images)
 

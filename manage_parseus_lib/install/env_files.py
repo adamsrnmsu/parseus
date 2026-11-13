@@ -77,7 +77,7 @@ def generate_env_files(
     )
     validate_ingestor_health_env_file(ingestor_health_path)
 
-    if "gpib" in integrations:
+    if "gpib" in integrations or "zeek" in integrations:
         ensure_managed_env_file(
             install_paths.env_dir / "ingestor.env",
             defaults=specs["ingestor.env"]["defaults"],
@@ -299,6 +299,7 @@ def get_env_file_specs(public_url: str = "https://127.0.0.1/") -> EnvFileSpecs:
                 "INGESTOR_GPIB_IP": "localhost",
                 "INGESTOR_GPIB_PORT": "1234",
                 "INGESTOR_CAPTURE_DIR": "/home/webapp/.parseus/artifacts/pcaps",
+                "ZEEK_IFACE": "eth0",
             },
             "generators": {},
         },

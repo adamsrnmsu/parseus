@@ -1,0 +1,279 @@
+# Parseus DNP3 point extractor for the objects stock Zeek's DNP3 analyzer ignores:
+# analog output status g40v1-v4 and binary input events g2v1-v3. It runs next to the
+# stock analyzer on the same TCP connection and raises one parseus_dnp3_point event
+# per point (see parseus_dnp3.evt); zeek/parseus.zeek logs it into dnp3_points.
+#
+# Layers, all done by hand because stock Zeek exposes none of them to Spicy:
+#   link       0x0564 start, 10-byte header, user data in 16-byte blocks each followed
+#              by a CRC-16 (both checked; a bad frame is dropped, not guessed at)
+#   transport  FIR/FIN/sequence reassembly into application fragments
+#   app        responses (0x81 / 0x82, 2-byte IIN) walked object header by object header
+#
+# The object walker is plain imperative code that returns a bytes blob of fixed-size
+# point records; the Rec unit then parses those records so the .evt can hook them
+# (events can only hang off unit hooks). Anything the walker is not sure about ends
+# the fragment: it never guesses at an object size.
+module ParseusDNP3;
+
+import spicy;
+import zeek;
+
+function u8(d: bytes, i: uint64): uint64 {
+    return cast<uint64>(*d.at(i));
+}
+
+# Little-endian unsigned integer of n bytes. Callers check bounds first.
+function le(d: bytes, off: uint64, n: uint64): uint64 {
+    local v: uint64 = 0;
+    local i = n;
+    while ( i > 0 ) {
+        i -= 1;
+        v = (v << 8) | u8(d, off + i);
+    }
+    return v;
+}
+
+# DNP3 CRC-16 (reflected polynomial 0xA6BC, complemented), as an integer.
+function crc16(d: bytes): uint64 {
+    local crc: uint64 = 0;
+    for ( b in d ) {
+        crc = crc ^ cast<uint64>(b);
+        local i = 0;
+        while ( i < 8 ) {
+            crc = (crc & 1) == 1 ? (crc >> 1) ^ 0xA6BC : crc >> 1;
+            i += 1;
+        }
+    }
+    return crc ^ 0xFFFF;
+}
+
+# Join the data blocks of one link frame, checking every block CRC. Returns empty
+# if any block is bad.
+function strip(raw: bytes, ulen: uint64): bytes {
+    local out = b"";
+    local pos: uint64 = 0;
+    local left = ulen;
+    while ( left > 0 ) {
+        local n = left < 16 ? left : 16;
+        local blk = raw.sub(raw.at(pos), raw.at(pos + n));
+        if ( crc16(blk) != le(raw, pos + n, 2) )
+            return b"";
+        out += blk;
+        pos += n + 2;
+        left -= n;
+    }
+    return out;
+}
+
+# Bytes per item of a fixed-size object (excluding any index prefix), 0 if unknown.
+# Packed bit groups (g1v1, g3v1, g10v1, g80v1) are handled by the caller.
+function item_size(g: uint64, v: uint64): uint64 {
+    switch ( g ) {
+        case 1, 3, 10: return v == 2 ? 1 : 0;
+        case 2, 4, 11, 13: return v == 1 ? 1 : (v == 2 ? 7 : (v == 3 && g != 11 && g != 13 ? 3 : 0));
+        case 12: return v == 1 ? 11 : 0;
+        case 20: return v == 1 ? 5 : (v == 2 ? 3 : (v == 5 ? 4 : (v == 6 ? 2 : 0)));
+        case 21: return v == 1 ? 5 : (v == 2 ? 3 : (v == 5 ? 11 : (v == 6 ? 9 : (v == 9 ? 4 : (v == 10 ? 2 : 0)))));
+        case 22, 23: return v == 1 ? 5 : (v == 2 ? 3 : (v == 5 ? 11 : (v == 6 ? 9 : 0)));
+        case 30: return v == 1 ? 5 : (v == 2 ? 3 : (v == 3 ? 4 : (v == 4 ? 2 : (v == 5 ? 5 : (v == 6 ? 9 : 0)))));
+        case 31: return v == 1 ? 5 : (v == 2 ? 3 : (v == 3 ? 11 : (v == 4 ? 9 : (v == 5 ? 4 : (v == 6 ? 2 : (v == 7 ? 5 : (v == 8 ? 9 : 0)))))));
+        case 32, 33, 42, 43: return v == 1 ? 5 : (v == 2 ? 3 : (v == 3 ? 11 : (v == 4 ? 9 : (v == 5 ? 5 : (v == 6 ? 9 : (v == 7 ? 11 : (v == 8 ? 15 : 0)))))));
+        case 34: return v == 1 ? 2 : (v == 2 ? 4 : (v == 3 ? 4 : 0));
+        case 40, 41: return v == 1 ? 5 : (v == 2 ? 3 : (v == 3 ? 5 : (v == 4 ? 9 : 0)));
+        case 50, 51: return v == 1 ? 6 : (g == 50 && v == 4 ? 11 : (g == 51 && v == 2 ? 6 : 0));
+        case 52: return v == 1 || v == 2 ? 2 : 0;
+        case 110, 111, 112, 113: return v;   # octet strings: the variation is the length
+        default: return 0;                   # a switch with no match would throw
+    }
+}
+
+# One fixed-size point record: fc, group, variation, flags, index, value.
+function rec(fc: uint64, g: uint64, v: uint64, flags: uint64, idx: uint64, val: real): bytes {
+    return pack(cast<uint8>(fc), spicy::ByteOrder::Big) + pack(cast<uint8>(g), spicy::ByteOrder::Big)
+         + pack(cast<uint8>(v), spicy::ByteOrder::Big) + pack(cast<uint8>(flags), spicy::ByteOrder::Big)
+         + pack(cast<uint32>(idx), spicy::ByteOrder::Big)
+         + pack(val, spicy::RealType::IEEE754_Double, spicy::ByteOrder::Big);
+}
+
+function sign(x: uint64, bits: uint64): real {
+    local r = cast<real>(x);
+    return (x >> (bits - 1)) == 1 ? r - cast<real>(cast<uint64>(1) << bits) : r;
+}
+
+# Value of one g40/g2 item at d[p] (flag byte first), or Null if it is inf/NaN.
+# g2: the value is the state bit (bit 7) of the flag byte, like g1v2/g10v2.
+function emit(out: bytes, fc: uint64, g: uint64, v: uint64, idx: uint64, d: bytes, p: uint64): bytes {
+    local flag = u8(d, p);
+    if ( g == 2 )
+        return out + rec(fc, g, v, flag, idx, cast<real>((flag >> 7) & 1));
+    switch ( v ) {
+        case 1: return out + rec(fc, g, v, flag, idx, sign(le(d, p + 1, 4), 32));
+        case 2: return out + rec(fc, g, v, flag, idx, sign(le(d, p + 1, 2), 16));
+        case 3: {
+            if ( ((le(d, p + 1, 4) >> 23) & 0xFF) == 0xFF )
+                return out;
+            return out + rec(fc, g, v, flag, idx, unpack<real>(d.sub(d.at(p + 1), d.at(p + 5)), spicy::RealType::IEEE754_Single, spicy::ByteOrder::Little)[0]);
+        }
+        case 4: {
+            if ( ((le(d, p + 5, 4) >> 20) & 0x7FF) == 0x7FF )
+                return out;
+            return out + rec(fc, g, v, flag, idx, unpack<real>(d.sub(d.at(p + 1), d.at(p + 9)), spicy::RealType::IEEE754_Double, spicy::ByteOrder::Little)[0]);
+        }
+    }
+    return out;
+}
+
+# Walk the objects of one response fragment d (AC, FC, IIN1, IIN2, objects...) and
+# return point records for g40v1-v4 and g2v1-v3. Stops at the first object it cannot
+# size, so a point is only ever read from a position the walk has proven.
+function walk(d: bytes): bytes {
+    local out = b"";
+    local n = |d|;
+    local fc = u8(d, 1);
+    local p: uint64 = 4;
+    while ( p + 3 <= n ) {
+        local g = u8(d, p);
+        local v = u8(d, p + 1);
+        local q = u8(d, p + 2);
+        p += 3;
+        local rc = q & 0x0F;
+        local pc = (q >> 4) & 0x07;
+        local first: uint64 = 0;
+        local cnt: uint64 = 0;
+        if ( rc <= 2 ) {                       # start/stop range, 1/2/4 byte
+            local w = rc == 0 ? 1 : (rc == 1 ? 2 : 4);
+            if ( p + 2 * w > n )
+                return out;
+            first = le(d, p, w);
+            local last = le(d, p + w, w);
+            if ( last < first )
+                return out;
+            cnt = last - first + 1;
+            p += 2 * w;
+        } else if ( rc == 6 ) {                # all objects: no range, no data
+            cnt = 0;
+        } else if ( rc >= 7 && rc <= 9 || rc == 0xB ) {   # count, 1/2/4 byte (0xB: 1)
+            local w = rc == 7 || rc == 0xB ? 1 : (rc == 8 ? 2 : 4);
+            if ( p + w > n )
+                return out;
+            cnt = le(d, p, w);
+            p += w;
+        } else
+            return out;
+        if ( pc == 7 || (rc == 0xB && pc < 4) )   # 0xB only exists with an object-size prefix
+            return out;
+        if ( pc >= 4 ) {                       # object-size prefix: skip, whatever it is
+            local sw = pc == 4 ? 1 : (pc == 5 ? 2 : 4);
+            local k: uint64 = 0;
+            while ( k < cnt ) {
+                if ( p + sw > n )
+                    return out;
+                p += sw + le(d, p, sw);
+                if ( p > n )
+                    return out;
+                k += 1;
+            }
+            continue;
+        }
+        local pw = pc == 0 ? 0 : (pc == 1 ? 1 : (pc == 2 ? 2 : 4));
+        local packed = (g == 1 || g == 10 || g == 80) && v == 1 ? 1 : ((g == 3 && v == 1) ? 2 : 0);
+        if ( packed > 0 ) {                    # packed bits: no prefix, ceil(cnt*bits/8) bytes
+            if ( pw > 0 )
+                return out;
+            p += (cnt * packed + 7) / 8;
+            if ( p > n )
+                return out;
+            continue;
+        }
+        local sz = item_size(g, v);
+        if ( sz == 0 && cnt > 0 )
+            return out;                        # unknown object: stop, never guess
+        local i: uint64 = 0;
+        while ( i < cnt ) {
+            if ( p + pw + sz > n )
+                return out;
+            local idx = pw > 0 ? le(d, p, pw) : first + i;
+            if ( idx > 0xFFFFFFFF )
+                return out;
+            if ( g == 40 || g == 2 )
+                out = emit(out, fc, g, v, idx, d, p + pw);
+            p += pw + sz;
+            i += 1;
+        }
+    }
+    return out;
+}
+
+public type Rec = unit {
+    fc: uint8;
+    group: uint8;
+    variation: uint8;
+    flags: uint8;
+    index: uint32;
+    value: real &type=spicy::RealType::IEEE754_Double &byte-order=spicy::ByteOrder::Big;
+};
+
+type Recs = unit {
+    recs: Rec[];
+};
+
+type Frame = unit(s: Stream&) {
+    : skip bytes &until=b"\x05\x64" &max-size=65536;
+    hdr: bytes &size=6;
+    hcrc: uint16 &byte-order=spicy::ByteOrder::Little;
+
+    var ulen: uint64 = 0;
+    var ok: bool = False;
+    var pts: bytes;
+
+    on hcrc {
+        local len = u8(self.hdr, 0);
+        local ctrl = u8(self.hdr, 1) & 0x4F;      # primary frame, user data (fc 3 or 4)
+        if ( crc16(b"\x05\x64" + self.hdr) == cast<uint64>(self.hcrc) && len > 5 && (ctrl == 0x43 || ctrl == 0x44) ) {
+            self.ulen = len - 5;
+            self.ok = True;
+        }
+    }
+
+    raw: bytes &size=(self.ulen + 2 * ((self.ulen + 15) / 16)) if ( self.ok );
+
+    # Transport layer: FIR starts a fragment, segments must follow in sequence, FIN
+    # completes it. An out-of-sequence segment drops the fragment in progress.
+    on raw {
+        local d = strip(self.raw, self.ulen);
+        if ( |d| == self.ulen ) {
+            local t = u8(d, 0);
+            local body = d.sub(d.at(1), d.at(|d|));
+            if ( (t & 0x40) != 0 ) {
+                s.buf = body;
+                s.active = True;
+            } else if ( s.active && (t & 0x3F) == s.next )
+                s.buf += body;
+            else
+                s.active = False;
+            s.next = ((t & 0x3F) + 1) & 0x3F;
+            if ( |s.buf| > 65535 )
+                s.active = False;
+            if ( s.active && (t & 0x80) != 0 ) {
+                local frag = s.buf;
+                s.active = False;
+                if ( |frag| >= 4 && (u8(frag, 1) == 0x81 || u8(frag, 1) == 0x82) )
+                    self.pts = walk(frag);
+            }
+            if ( ! s.active )
+                s.buf = b"";
+        }
+    }
+
+    : Recs &parse-from=self.pts if ( |self.pts| > 0 );
+
+    on %done { zeek::confirm_protocol(); }
+};
+
+public type Stream = unit {
+    var buf: bytes;
+    var active: bool = False;
+    var next: uint64 = 0;
+
+    : Frame(self)[];
+};

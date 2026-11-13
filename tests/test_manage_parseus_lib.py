@@ -1284,6 +1284,17 @@ def test_remove_system_paths_rejects_unmarked_app_root(tmp_path: Path) -> None:
         remove_system_paths(paths)
 
 
+def test_zeek_integration_maps_to_its_compose_profile() -> None:
+    assert parse_integrations_value("zeek", source="test") == ["zeek"]
+    assert build_compose_profile_args(["zeek"]) == ["--profile", "zeek"]
+    runtime = (Path(__file__).parents[1] / "compose.runtime.yaml").read_text()
+    for service in ("zeek:", "zeek_ingestor:"):
+        assert f"\n  {service}\n" in runtime
+    from manage_parseus_lib.constants import UNINSTALL_REMOVABLE_VOLUMES
+
+    assert "parseus_zeek_log_data" in UNINSTALL_REMOVABLE_VOLUMES
+
+
 def test_parse_integrations_normalizes_dedupes_and_validates() -> None:
     assert parse_integrations_value(" GPIB,winlog,gpib ", source="test") == [
         "gpib",
@@ -1834,6 +1845,27 @@ def test_verify_stack_plan_can_skip_duplicate_image_verification(monkeypatch) ->
     verify_stack_plan(paths, [], plan, verify_images=False)
 
     assert calls == [("ports", {"services": {}}), ("binds", {"services": {}})]
+
+
+def test_verify_stack_plan_checks_zeek_interface_on_host(monkeypatch, tmp_path: Path) -> None:
+    for name in ("verify_required_ports", "verify_required_bind_mounts", "verify_required_images"):
+        monkeypatch.setattr(f"manage_parseus_lib.workflows.stack.{name}", lambda *_: None)
+    monkeypatch.setattr(
+        "manage_parseus_lib.workflows.stack.socket.if_nameindex",
+        lambda: [(1, "lo"), (2, "ens3")],
+    )
+    env_dir = tmp_path / "envs"
+    env_dir.mkdir()
+    (env_dir / "ingestor.env").write_text("ZEEK_IFACE=eth0\n")
+    paths = SimpleNamespace(env_dir=env_dir)
+    plan = StackPlan(rendered={}, required_images=[], named_volumes=[])
+
+    with pytest.raises(ManageParseusError, match=r"ZEEK_IFACE=eth0.*lo, ens3"):
+        verify_stack_plan(paths, ["zeek"], plan)
+
+    verify_stack_plan(paths, ["gpib"], plan)  # zeek disabled: not checked
+    (env_dir / "ingestor.env").write_text("ZEEK_IFACE=ens3\n")
+    verify_stack_plan(paths, ["zeek"], plan)
 
 
 def test_run_app_setup_runs_migrations_and_bootstrap_commands(monkeypatch, tmp_path: Path) -> None:
