@@ -18,8 +18,11 @@ WORKDIR /app
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# build-essential: hdbscan and libsass publish no linux/arm64 wheels, so pip compiles them there.
+# Builder stage only; the runtime image copies just the venv.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
+        build-essential \
         git \
     && apt-get clean \
     && apt-get autoremove -y \
