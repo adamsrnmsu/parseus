@@ -308,8 +308,10 @@ def add_must_sub_query(query, sub_query):
             "add_must_sub_query(query, sub_query): sub_query must be a dictionary."
         )
     query = deepcopy(query)
-    if "bool" not in query:
+    if not query:
         query = {"bool": {}}
+    elif "bool" not in query:
+        query = {"bool": {"must": [query]}}
     if "must" not in query["bool"]:
         query["bool"]["must"] = []
     if not isinstance(query["bool"]["must"], list):
