@@ -101,7 +101,7 @@ def test_nginx_defaults_reject_bad_port(port) -> None:
     values = _net_values(PARSEUS_HTTPS_PORT=port)
     with pytest.raises(ManageParseusError, match="Invalid Compose HTTPS port") as exc:
         apply_compose_nginx_network_defaults(values, _parser(), CFG)
-    assert repr(port) in exc.value.message or port in exc.value.message
+    assert exc.value.message.endswith((f": {port!r}", f": {port}"))
     assert str(CFG) in exc.value.message
     assert values["https_port"] == 9000
 
@@ -243,7 +243,8 @@ def test_validate_rejects_bad_common_name(name) -> None:
 
 
 def test_validate_accepts_unusual_but_printable_common_name() -> None:
-    validate_installer_config_values(_valid_values(certificate_common_name="a b\x20c"))
+    # Space (0x20) is the lowest character the control-character check allows.
+    validate_installer_config_values(_valid_values(certificate_common_name="a b c"))
 
 
 def test_validate_san_requirements() -> None:
@@ -274,7 +275,7 @@ def test_validate_certificate_files(tmp_path: Path) -> None:
     _rejects("provided together", certificate_key_file=key)
     _rejects("cert_file does not exist", certificate_cert_file=tmp_path / "missing", certificate_key_file=key)
     _rejects("key_file does not exist", certificate_cert_file=cert, certificate_key_file=tmp_path)
-    _rejects("cert_file", certificate_cert_file=str(cert), certificate_key_file=key)
+    _rejects("cert_file: must be a non-empty path", certificate_cert_file=str(cert), certificate_key_file=key)
 
 
 @pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="needs non-root POSIX")
@@ -293,7 +294,7 @@ def test_validate_rejects_unreadable_certificate_file(tmp_path: Path) -> None:
 @pytest.mark.parametrize("key", ["public_url", "health_host", "certificate_common_name"])
 @pytest.mark.parametrize("bad", ["", "  ", None])
 def test_validate_rejects_empty_required_strings(key, bad) -> None:
-    with pytest.raises(ManageParseusError):
+    with pytest.raises(ManageParseusError, match="must not be empty"):
         validate_installer_config_values(_valid_values(**{key: bad}))
 
 
