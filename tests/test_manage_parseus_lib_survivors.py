@@ -255,15 +255,17 @@ def test_ensure_compose_env_file_empty_input_writes_nothing(tmp_path: Path) -> N
     assert not paths.compose_env_file.exists()
 
 
-def test_ensure_compose_env_file_creates_and_merges(tmp_path: Path) -> None:
+def test_ensure_compose_env_file_creates_and_merges(tmp_path: Path, monkeypatch) -> None:
     paths = _paths(tmp_path)
-    ensure_compose_env_file(paths, {"A": "1"})
-    assert parse_env_file(paths.compose_env_file) == {"A": "1"}
+    ensure_compose_env_file(paths, {"A": "1", "C": "4"})
+    assert parse_env_file(paths.compose_env_file) == {"A": "1", "C": "4"}
     assert paths.compose_env_file.read_text().startswith("# Parseus Docker Compose configuration")
 
     ensure_compose_env_file(paths, {"B": "2", "A": "3"})
-    assert parse_env_file(paths.compose_env_file) == {"A": "3", "B": "2"}
+    assert parse_env_file(paths.compose_env_file) == {"A": "3", "B": "2", "C": "4"}
     assert (paths.config_root / "compose.env").is_file()
+    monkeypatch.setattr(env_files, "write_env_file", lambda *a, **k: pytest.fail("rewrote unchanged compose.env"))
+    ensure_compose_env_file(paths, {"B": "2"})
 
 
 @pytest.mark.parametrize("url", ["ftp://host/", "http://", "host.example", "https:///path"])
@@ -417,7 +419,7 @@ def test_write_env_file_permission_error_message_includes_reason(tmp_path: Path,
 def test_parse_env_file_quoting_and_skipped_lines(tmp_path: Path) -> None:
     path = tmp_path / "q.env"
     path.write_text(
-        "# comment\n\nnoequals\n"
+        "# comment=x\n\nnoequals\n"
         'DQ="a\\nb"\nSQ=\'single\'\nBARE=plain\nQ1="\nQ2=\'\nEMPTYQ=""\nEQ=a=b\n'
     )
     assert parse_env_file(path) == {
@@ -439,6 +441,7 @@ def test_fingerprint_is_stable_and_order_independent() -> None:
     assert a == stable_config_fingerprint({"y": [True, None, ["t", 1.5]], "x": 1})
     assert a != stable_config_fingerprint({"x": 1, "y": [False, None, ["t", 1.5]]})
     assert stable_config_fingerprint({"p": Path("/a")}) == stable_config_fingerprint({"p": "/a"})
+    assert stable_config_fingerprint({"a": 1}) != stable_config_fingerprint({"a": "1"})
 
 
 def test_manifests_differ_meaningfully() -> None:
