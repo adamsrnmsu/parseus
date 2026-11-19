@@ -32,6 +32,7 @@ def test_cluster_features_separates_each_registers_levels():
     assert clustered.index.equals(_two_level_reg_state().index)
     for column in clustered.columns:
         labels = clustered[column]
+        assert (labels != -1).all()
         assert labels.iloc[:30].nunique() == 1
         assert labels.iloc[30:].nunique() == 1
         assert labels.iloc[0] != labels.iloc[-1]
@@ -39,6 +40,15 @@ def test_cluster_features_separates_each_registers_levels():
 
 def test_make_clustered_states_df_numbers_states_in_order_of_appearance():
     states = make_clustered_states_df(_two_level_reg_state(), cluster_value=0.06)
+
+    assert states["state_id"].iloc[:30].eq(1).all()
+    assert states["state_id"].iloc[30:].eq(2).all()
+
+
+def test_make_clustered_states_df_accepts_read_only_float_values():
+    # One float column gives a C-contiguous read-only array that hdbscan won't copy.
+    reg_state = _two_level_reg_state()[["gate"]]
+    states = make_clustered_states_df(reg_state, cluster_value=0.06)
 
     assert states["state_id"].iloc[:30].eq(1).all()
     assert states["state_id"].iloc[30:].eq(2).all()
