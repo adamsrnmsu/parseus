@@ -660,9 +660,11 @@ def test_remove_system_accounts_uses_manifest_created_flags(monkeypatch) -> None
 def test_build_paths_uses_var_lib_for_manifest_state() -> None:
     paths = build_paths()
 
-    assert paths.state_dir == Path("/var/lib/parseus/state")
-    assert paths.current_manifest == Path("/var/lib/parseus/state/current_manifest.json")
-    assert paths.history_dir == Path("/var/lib/parseus/state/history")
+    # build_paths() resolves symlinks, so /var -> /private/var on macOS.
+    state = Path("/var/lib/parseus/state").resolve()
+    assert paths.state_dir == state
+    assert paths.current_manifest == state / "current_manifest.json"
+    assert paths.history_dir == state / "history"
 
 
 def _test_install_paths(tmp_path: Path):
