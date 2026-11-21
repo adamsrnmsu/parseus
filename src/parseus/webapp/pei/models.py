@@ -113,7 +113,7 @@ class PeatConfig(models.Model):
 
 class PeatDevice(models.Model):
     label = models.CharField(max_length=150)
-    comment = models.CharField(max_length=255, null=True)
+    comment = models.CharField(max_length=255, blank=True, null=True)
     ip = models.GenericIPAddressField(
         protocol="IPv4", unpack_ipv4=False, blank=True, null=True
     )
@@ -122,7 +122,7 @@ class PeatDevice(models.Model):
     serial_port = models.CharField(max_length=150, blank=True, null=True)
     name = models.CharField(max_length=150, blank=True, null=True)
     peat_module = models.CharField(max_length=150, blank=True, null=True)
-    options = models.JSONField(default=dict, null=True)
+    options = models.JSONField(default=dict, blank=True, null=True)
     config = models.ForeignKey(
         PeatConfig, on_delete=models.CASCADE, related_name="hosts"
     )

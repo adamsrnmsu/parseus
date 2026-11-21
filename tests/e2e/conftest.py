@@ -79,3 +79,19 @@ def _http_session_cookies(settings):
     # carries the loaded register data between /query/ and /state/state/.
     settings.SESSION_COOKIE_SECURE = False
     settings.CSRF_COOKIE_SECURE = False
+
+
+@pytest.fixture
+def problems(page):
+    """HTTP >= 400 responses, JS page errors and console errors seen by ``page``."""
+    seen = []
+    page.on(
+        "response",
+        lambda r: seen.append(f"HTTP {r.status} {r.url}") if r.status >= 400 else None,
+    )
+    page.on("pageerror", lambda e: seen.append(f"pageerror {e}"))
+    page.on(
+        "console",
+        lambda m: seen.append(f"console {m.text}") if m.type == "error" else None,
+    )
+    return seen

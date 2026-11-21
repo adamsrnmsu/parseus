@@ -51,7 +51,7 @@ const analytics = {
       success: function (response, textStatus, xhr) {
         // request went through
         deleteModal.hide();
-        document.getElementById(`${model}-line`).remove();
+        document.getElementById(`trained-model-${pk}-line`).remove();
         toastSuccess(`Successfully deleted ${model}`, 7000);
       },
       error: function (response) {
