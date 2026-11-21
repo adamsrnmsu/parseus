@@ -1,5 +1,7 @@
 """Smoke tests: load Modbus data on the Registers page, chart it, open the State tab."""
 
+import re
+
 import pytest
 from playwright.sync_api import expect
 
@@ -63,3 +65,28 @@ def test_state_tab(live_server, page, modbus_index):
     )
     expect(page.locator(CHART.format(*["#state-graph"] * 2)).first).to_be_visible()
     expect(page.locator(ERROR_TOAST)).to_have_count(0)
+
+
+def test_register_legend(live_server, page, modbus_index):
+    load_and_select(page, live_server, modbus_index)
+
+    # Names are "<conversation>:<register>"; the conversation prefix varies by run.
+    # Only visible items count: the hidden .d-none one is the clone template.
+    items = page.locator("#register-graph-legend .legend-item:not(.d-none)")
+    expect(items).to_have_count(2)
+    expect(page.locator("#register-graph-legend .legend-item.d-none")).to_have_count(1)
+    expect(items.locator(".legend-text")).to_have_text([re.compile(r":100$"), re.compile(r":101$")])
+
+    # Redraw replaces the items rather than appending to them.
+    page.locator(".register-check:visible").nth(2).uncheck()
+    expect(items).to_have_count(1)
+
+
+def test_state_legend(live_server, page, modbus_index):
+    load_and_select(page, live_server, modbus_index)
+
+    page.click("#nav-profile-tab")
+    expect(page.locator(CHART.format(*["#state-graph"] * 2)).first).to_be_visible()
+    items = page.locator("#state-graph-legend .legend-item:not(.d-none)")
+    expect(items).to_have_count(1)
+    expect(items.locator(".legend-text")).to_have_text("State ID")

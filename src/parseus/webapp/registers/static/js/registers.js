@@ -190,7 +190,7 @@ function addToLegend(legend_id, text, color) {
     // Get legend
     const legend = $(legend_id);
     // Get legend item template
-    const legendItemTemplate = $(".legend-item").first();
+    const legendItemTemplate = legend.children(".legend-item").first();
     // Create new legend item with the given text and color
     let legendItem = legendItemTemplate.clone();
     legendItem.children(".legend-color").css("background-color", color);
@@ -946,7 +946,7 @@ function drawNodeEdge(graph_id, datasets, _, options={}) {
 function updateGraph(graph_id, drawFunction, datasets, normalized=false, options={}) {
     // Get graph element
     let graph = $(`#${graph_id}`);
-    let legend_id = `${graph_id}-legend`
+    let legend_id = `#${graph_id}-legend`
     
     // Remove graph if no registers chosen
     if (datasets.length == 0) {
